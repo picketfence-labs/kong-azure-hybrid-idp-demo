@@ -118,3 +118,10 @@
 
 ## 2026-09-01 デモAPI: テストデータ生成方法の記録
 CLAUDE.md「セキュリティ・クラウド認証」の要求に基づく記録。`services/demo-api/src/data.ts`の100人分の顧客データ（マイナンバーを模した12桁の値を含む）は、固定シード（42）のmulberry32擬似乱数生成器のみから機械的に組み立てた完全な架空データ。実在の人物・実在の番号を一切参照していない。氏名は姓・名それぞれ10種の一般的な単語からの組み合わせ、マイナンバー相当値は12桁の乱数文字列（チェックデジット等の実仕様は再現していない）。
+
+## 2026-09-08【Group 2設計・着手前】公式`saml`プラグインはSAMLアサーションのAttributeStatementを一切パースしない
+- **何を期待していたか**: Group 2（当初「SAMLグループ」）の要件（ADFSからのSAMLアサーションで`department`属性を抽出しグループ判定に使う）に対し、Kong Enterprise公式`saml`プラグインがその属性抽出・後続プラグインへの受け渡しをサポートしていると想定していた
+- **実際どうだったか**: `kong-ee`ソースコード（ローカル最新版、master @ 2026-09-03）を実装着手前に確認したところ、`plugins-ee/saml/kong/plugins/saml/saml.lua`の`parse_and_validate_login_response()`が返すのは`username`（NameID）/`issuer`/`session_idx`の3フィールドのみ（`saml.lua:378-382`）で、`AttributeStatement`の内容は一切パースされていなかった。認証後の処理（`handler.lua:229-247`、`consumers.lua`）もNameID→既存Kong Consumerの静的マッピングのみで、カスタム属性をダウンストリームへ渡す仕組みが存在しない
+- **原因**: 公式`saml`プラグインの設計上の制約（NameIDベースのConsumer認証に特化しており、属性ベースの認可を想定した設計になっていない）。加えて`saml.lua:240`のコメントに「AzureAD digest verification can fail when an AttributeStatement is present in the assertion」という既知の懸念も記載されている
+- **対処・回避方法**: [ADR-0003](./decisions/0003-group2-adfs-auth-protocol.md)の通り、Group 2の認証プロトコルをSAMLからOIDCへ変更し、ADFSのOAuth/OIDCエンドポイントを使う方式へ転換した。実装着手前（コーディング開始前）の設計検証段階で発見できたため、実装のやり直しは発生していない
+- **コスト**: 軽微（ソースコード確認のみ、実装コストはゼロ。ただしDesign Brief・ヒアリングの手戻りは発生した）

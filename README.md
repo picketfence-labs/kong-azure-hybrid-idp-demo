@@ -1,15 +1,21 @@
-# Kong Gateway 3.16 (beta) — Entra ID OBO × AI MCP Proxy ACL デモ
+# Kong Gateway — Entra ID OIDC/OBOとADFS/OIDCが共存するハイブリッドIdPデモ
 
-Chat AIエージェントからMCP経由でバックエンドAPIへアクセスするデモです。「エージェントとしてログインする権限」と「個々のAPI（Tool）を実行する権限」を分離し、Kong Gateway 3.16のOpenID ConnectプラグインのOBO（On-Behalf-Of）機能でトークン交換、AI MCP ProxyのACL機能でTool単位の認可を行う一連の流れを実地検証します。**Konnectは使用しません**（Kong Gateway単体、Postgres backed）。
+[kong-azure-obo-demo](https://github.com/picketfence-labs/kong-azure-obo-demo)をフォークして作成した、**2つの異なる認証経路が共存するデモ環境**です:
 
-着手前の基本設計は [docs/design-brief.md](./docs/design-brief.md) を参照してください。個別の設計判断（検討した選択肢・判断基準）は [docs/decisions/](./docs/decisions/) に記録します。
+- **Group 1**（フォーク元、変更なし）: Chat AIエージェントからMCP経由でバックエンドAPIへアクセスするデモ。「エージェントとしてログインする権限」と「個々のAPI（Tool）を実行する権限」を分離し、Kong Gateway 3.16のOpenID ConnectプラグインのOBO（On-Behalf-Of）機能でトークン交換、AI MCP ProxyのACL機能でTool単位の認可を行う一連の流れを実地検証します
+- **Group 2（ADFSグループ、新規）**: Entra IDからフェデレーションしたADFSとOIDCで連携し、レガシーサービス側の認可ロジック（属性からグループ情報を導出しAPIごとのアクセス可否を判定する）をKongのカスタムプラグインとして再現するデモです。バックエンドは[kong-api-bundle-insurance](https://github.com/picketfence-labs/kong-api-bundle-insurance)の保険業務API（6サービス）をそのまま利用します
+
+**Konnectは使用しません**（Kong Gateway単体、Postgres backed）。
+
+着手前の基本設計は [docs/design-brief.md](./docs/design-brief.md) を参照してください（Group 1・Group 2それぞれの要件・アーキテクチャを記載）。個別の設計判断（検討した選択肢・判断基準）は [docs/decisions/](./docs/decisions/) に記録します。**Group 2はSAML方式からOIDC方式への転換を経ており、経緯は [ADR-0003](./docs/decisions/0003-group2-adfs-auth-protocol.md) を参照してください**。
 
 ![Chat UI画面](./docs/testing-images/02-chat-inquiry-only-details-denied.png)
 
-**実際に動かして動作確認したい方は [TESTING.md](./TESTING.md) を参照してください**（スクリーンショット付きの検証手順）。**OBO（On-Behalf-Of）によるトークン交換の仕組みを図解付きで理解したい方は [docs/OBO.md](./docs/OBO.md) を参照してください**。
+**Group 1を実際に動かして動作確認したい方は [TESTING.md](./TESTING.md) を参照してください**（スクリーンショット付きの検証手順）。**OBO（On-Behalf-Of）によるトークン交換の仕組みを図解付きで理解したい方は [docs/OBO.md](./docs/OBO.md) を参照してください**。Group 2のセットアップ手順は実装完了後に本READMEへ追記します。
 
 ## 全体アーキテクチャ
 
+### Group 1（フォーク元、変更なし）
 Kong Gatewayが3系統のRoute/Serviceをフロントします（詳細は [docs/design-brief.md](./docs/design-brief.md) 参照）:
 
 1. **Chat UI/エージェント アクセス用Route**: `openid-connect`（認可コードフロー、ログイン可否判定のみ。OBOなし）
@@ -18,12 +24,25 @@ Kong Gatewayが3系統のRoute/Serviceをフロントします（詳細は [docs
 
 Chat UI（Next.js）はKongの認証を全面的に信頼し、独自のOAuthクライアント実装（Auth.js等）を持ちません。
 
+### Group 2（ADFSグループ、新規）
+1. **IdP接続**: `openid-connect`プラグインがADFSのOIDCエンドポイント（Entra IDからフェデレーション）に対し認可コードフローを実施（OBOなし）
+2. **認可ロジック**: カスタムLuaプラグインがIDトークンのクレームからグループを確定し、Service単位の許可リストと照合してアクセス可否を判定
+3. **バックエンド**: `kong-api-bundle-insurance`のGHCR公開コンテナ6種
+
+詳細は [docs/design-brief.md](./docs/design-brief.md) の「Group 2」節を参照してください。
+
 ## 必要なもの
+
+### Group 1
 - Docker / Docker Compose
 - Kong Enterpriseライセンス
 - Terraform >= 1.5（`azuread` provider）
 - Microsoft Entra IDテナントと管理者権限（App Registration・Security Group作成のため）
 - Azure OpenAIリソース
+
+### Group 2（追加）
+- picketfence自身のAzureサブスクリプション＋Entra IDテナントへの管理者アクセス（Microsoft Entra Domain Services・ADFS VM作成のため）
+- ADFSサーバー用Windows Server VMを稼働させ続けられるAzure予算（デモ後は`terraform destroy`で削除する前提）
 
 ## 技術スタック
 - **Kong Gateway**: `kong/kong-gateway-dev:pr-21082-ubuntu`（ベータ、Entra ID OBO対応ビルド）、Postgres backed、decKで宣言的管理

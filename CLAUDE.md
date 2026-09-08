@@ -3,16 +3,27 @@
 このファイルはClaude Codeがこのリポジトリで作業する際のガイドです。
 
 ## このリポジトリについて
-Kong Gateway 3.16（ベータ）のOpenID Connectプラグイン新機能「Entra ID OBO（On-Behalf-Of）」を、AI MCP ProxyのACL機能・AI Proxy AdvancedによるLLMアクセス抽象化と組み合わせて実地検証するデモ。Chat AIエージェント→Kong Gateway→（OBOでトークン交換）→MCP化されたバックエンドAPI、という流れを構築する。**Konnectは使用しない**（Kong Gateway単体、Postgres backed）。
+[picketfence-labs/kong-azure-obo-demo](https://github.com/picketfence-labs/kong-azure-obo-demo)をフォークして作成した、**2つの異なる認証経路が共存するデモ環境**:
+- **Group 1**（フォーク元、変更なし）: Kong Gateway 3.16（ベータ）のOpenID Connectプラグイン新機能「Entra ID OBO（On-Behalf-Of）」を、AI MCP ProxyのACL機能・AI Proxy AdvancedによるLLMアクセス抽象化と組み合わせて実地検証するデモ。Chat AIエージェント→Kong Gateway→（OBOでトークン交換）→MCP化されたバックエンドAPI、という流れ
+- **Group 2（ADFSグループ、新規）**: Entra IDからフェデレーションしたADFSとOIDCで連携し、レガシーサービス側に存在する認可ロジック（属性からグループ情報を導出しAPIごとのアクセス可否を判定する）をKongのカスタムプラグインとして再現するデモ
+
+**Konnectは使用しない**（Kong Gateway単体、Postgres backed）。
+
+## リポジトリ構成（Group 2追加時の命名方針）
+既存のフラットな構成（`terraform/*.tf`、`kong/*-route.yaml`、`services/<name>/`）をそのまま踏襲する。新規ファイル追加時の推奨命名（強制ではないが、既存パターンとの一貫性のため踏襲を推奨）:
+- `terraform/`: Group 2関連は`adfs_*.tf`（ADFS VM/Entra Domain Services/NSG）、`insurance_*.tf`（Entra IDテストユーザー・ADFS OAuthサーバー設定）のようにprefixで区別する
+- `kong/`: Group 2の6バックエンドService/Route定義は`insurance-<service>.yaml`（例: `insurance-product.yaml`）のように1ファイル1Serviceで揃える
+- `kong/plugins/`（新設）: カスタムLuaプラグイン（`legacy-authz-adapter`）の配置先
+- `services/`: Group 2専用UIは`services/insurance-ui`のように、既存の`services/chat-ui`と並列の新規ディレクトリにする
 
 ## 基本設計
-[docs/design-brief.md](./docs/design-brief.md) を必ず参照すること。Projectゴール・要件（現在＋将来）・アーキテクチャ（Kongがフロントする3系統のRoute/Service構成、Entra IDアプリ構成、OBOの実装詳細）・技術スタック・検証方法・成果物を記載済み。全論点はPicketfence Labs Obsidian Vault側とのヒアリングで確定済みで、着手前の再確認は不要（ただし実装中に新たな判断ポイントが見つかった場合は下記「アーキテクチャ上の分岐点」の手順に従う）。
+[docs/design-brief.md](./docs/design-brief.md) を必ず参照すること。Group 1・Group 2それぞれのProjectゴール・要件（現在＋将来）・アーキテクチャ・技術スタック・検証方法・成果物を記載済み。全論点はPicketfence Labs Obsidian Vault側とのヒアリングで確定済みで、着手前の再確認は不要（ただし実装中に新たな判断ポイントが見つかった場合は下記「アーキテクチャ上の分岐点」の手順に従う）。**Group 2は当初「SAMLグループ」として設計が進んでいたが、実装着手前に公式`saml`プラグインの機能不足が判明しOIDC方式へ転換した経緯がある。[ADR-0003](./docs/decisions/0003-group2-adfs-auth-protocol.md)を必ず参照すること**。
 
 ## 開発フロー
-- `main`ブランチはbranch protection有効化を試みる（PR必須、`enforce_admins: true`）。ただし本リポジトリはprivate。**private + GitHub Freeプランではbranch protection APIが403で有効化できない既知の制約がある**（有効化できなかった場合はこのCLAUDE.mdの運用規約として「直接pushしない」ことを守ること）
-- `git checkout -b <branch>` → 実装・検証 → `git push -u origin <branch>` → `gh pr create` → `gh pr merge --squash --delete-branch`
+- 本リポジトリは**public**。`main`ブランチのbranch protection有効化を試みる（PR必須、`enforce_admins: true`）。publicリポジトリはGitHub Freeプランでも有効化できることが別リポジトリ（`kong-api-bundle-insurance`）の実例で確認済み（private限定の403制約はここでは該当しない見込み）
+- `git checkout -b <branch>` → 実装・検証 → `git push -u origin <branch>` → `gh pr create` → **完了報告を返して停止**（マージは人間が実行する。`gh pr merge`は`.claude/settings.json`で`deny`にしてある）
 - PRの粒度は1PR=1テーマ。descriptionにWhat/Why/Testingを含める
-- **`.claude/settings.json`（このリポジトリ内の`Edit`/`Write`/`git add`/`git commit`は`allow`扱い）**: 利用者の明示的な指示により、本リポジトリ内のファイル操作は確認不要としている（毎回確認されるUXが悪かったため）。ただし`.claude/settings.json`自体の編集（権限設定の変更）は`ask`へ明示的に例外化してあり、確認を求められる。この例外は`allow`の`Edit`/`Write`より先に評価されるため機能する。将来ここへ新たに広い`allow`ルールを追加する場合も、`.claude/settings.json`自体を対象から除外する書き方（`ask`側の`Edit(.claude/settings.json)`/`Write(.claude/settings.json)`）を維持すること
+- **`.claude/settings.json`（このリポジトリ内の`Edit`/`Write`/`git add`/`git commit`は`allow`扱い）**: 本リポジトリ内のファイル操作は確認不要としている（毎回確認されるUXが悪かったため）。ただし`.claude/settings.json`自体の編集（権限設定の変更）と`gh pr merge`は`ask`/`deny`へ明示的に例外化してあり、確認・実行不可の対象になる。この例外は`allow`の`Edit`/`Write`より先に評価されるため機能する。将来ここへ新たに広い`allow`ルールを追加する場合も、この2点の例外は維持すること
 
 ## アーキテクチャ上の分岐点に遭遇した時の取り決め（重要）
 過去の別プロジェクト（`aws-konnect-dcgw`）で、将来要件を確認せずに1つの選択肢を選んで進めてしまい手戻りが発生した実例がある。この再発防止:
@@ -30,11 +41,11 @@ Kong Gateway 3.16（ベータ）のOpenID Connectプラグイン新機能「Entr
 3. 特にKong 3.16のベータ機能（`openid-connect`のOBO、`ai-mcp-proxy`との連携）は未リリース機能のため、公式ドキュメントとの乖離やドキュメント自体の不在が起こりやすい。実際に動かして確認した挙動を優先して記録する
 
 ## エスカレーション条件（必ず確認を取る）
-1. 不可逆・破壊的な操作（`terraform apply`・`terraform destroy`、Entra IDのApp Registration/Security Groupの削除・再作成、decKの`sync`による本番相当環境への反映）
-2. 継続的にコストが発生する操作（Azure OpenAIの利用、Kong Enterpriseライセンスの消費等）
+1. 不可逆・破壊的な操作（`terraform apply`・`terraform destroy`、Entra IDのApp Registration/Security Groupの削除・再作成、Group 2のADFS VM/Entra Domain Servicesの作成・削除、decKの`sync`による本番相当環境への反映）
+2. 継続的にコストが発生する操作（Azure OpenAIの利用、Kong Enterpriseライセンスの消費、Group 2のMicrosoft Entra Domain Services/ADFS VMの稼働等。**Entra Domain Services/ADFS VMは利用者確認済みでデモ後`terraform destroy`する前提のためコスト自体は許容されているが、削除し忘れて稼働し続けないよう注意する**）
 3. 要件の曖昧さが設計の方向性に影響する場合
 4. スコープ逸脱
-5. 機密情報の扱いに確信が持てない場合（Entra IDのclient secret、Azure OpenAI APIキー、Postgres認証情報、マイナンバー等を模したテストデータ等）
+5. 機密情報の扱いに確信が持てない場合（Entra IDのclient secret、Azure OpenAI APIキー、Postgres認証情報、ADFSの認証情報、マイナンバー等を模したテストデータ等）
 
 ## 自己判断で進めてよい条件
 1. 読み取り専用の調査・確認作業（`terraform plan`、`deck diff`、`az`の参照系コマンド等）
@@ -65,17 +76,27 @@ Kong Gateway 3.16（ベータ）のOpenID Connectプラグイン新機能「Entr
 - 長期間有効な静的な認証情報より、可能な範囲で一時的な認証方式を優先する
 
 ## Kong Gateway関連の技術メモ
+
+### Group 1（フォーク元、変更なし）
 - イメージ: `kong/kong-gateway-dev:pr-21082-ubuntu`（ベータ、Entra ID OBO対応）
 - `openid-connect`プラグインの`token_exchange.grant_type=jwt_bearer`+`provider=microsoft`でEntra ID OBOを実装（詳細は`docs/design-brief.md`「3. アーキテクチャ」参照）
 - `ai-mcp-proxy`は`conversion-listener`モードで開始（将来Tool追加時に`listener`+`conversion-only`へ作り替える）
 - `ai-proxy-advanced`でAzure OpenAIへのアクセスを抽象化
+
+### Group 2（ADFSグループ、新規）
+- IdPはADFS（Entra IDからフェデレーション）。**プロトコルはOIDC**（SAMLではない、[ADR-0003](./docs/decisions/0003-group2-adfs-auth-protocol.md)参照）。ADFSのOIDC/OAuth2エンドポイント（`/adfs/.well-known/openid-configuration`）に対し`openid-connect`プラグインで通常の認可コードフローを実施する（OBOなし）
+- 認可ロジックは新規カスタムLuaプラグイン（仮称`legacy-authz-adapter`）で実装する。IDトークンのクレーム（属性値=グループID）を読み取り、レガシー認可サービス相当のロジックでグループを確定、ヘッダー設定＋Service単位の`allowed_groups`と照合したアクセス可否判定を1つのプラグインで行う。**`openid-connect`の`groups_claim`/`groups`だけで宣言的に済ませる簡略化は不採用**（このデモの主眼がカスタムプラグイン化そのものにあるため）
+- バックエンドは`kong-api-bundle-insurance`のGHCR公開コンテナ6種（`product`/`customer`/`simulation`/`application`/`policy`/`claim`）をそのままpullして使う（新規実装なし）
+- グループ⇔APIアクセスマトリクスは`docs/design-brief.md`Group 2節を参照
+
+### 共通
 - Kong Gateway自体の設定はdecKの宣言的YAMLで管理（Terraformの対象外）
 - Kong公式の[`Kong/ai-marketplace`](https://github.com/Kong/ai-marketplace)（tech preview）に、decKのstate file・validate/diff/sync操作を支援する`deck-gateway`スキルが含まれる。導入を検討する場合は`/plugin marketplace add kong/ai-marketplace` → `/plugin install kong-konnect@ai-marketplace`（未使用検証、必要になったタイミングで判断する）
 - terraform-mcp-serverは導入しない（Picketfence Labs Vaultの一般方針。ローカルの`.tf`＋`terraform`コマンド実行のみで運用し、HCP Terraform等のリモート管理は使わない）
 
 ## ローカル参照
 Picketfence Labs Obsidian Vault側のセッションと同一端末で作業している場合、以下のローカルリポジトリが参照可能（`.claude/settings.json`の`additionalDirectories`で許可されている場合。無い場合は明示的に依頼して`--add-dir`で追加すること）:
-- `kong-ee`（Kong EEソースコード。OBO機能・`ai-mcp-proxy`の実装詳細を確認する一次情報源）
+- `kong-ee`（Kong EEソースコード。Group 1のOBO機能・`ai-mcp-proxy`の実装詳細に加え、Group 2の`openid-connect`の`groups_claim`/`upstream_headers`等の実装確認、カスタムプラグイン開発のAPI理解に使う一次情報源）
 - `kong-mcp-testbed`（Postgres+decKの実働構成サンプル、OIDC+`ai-mcp-proxy`ネイティブACLの実装例）
 
 ## セッション終了時
