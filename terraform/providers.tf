@@ -1,5 +1,5 @@
 # 認証は Azure CLI (`az login`) のセッションに委譲する。
-# クライアントシークレット等の長期間有効な静的資格情報は使わない（判断根拠: docs/decisions/0001-terraform-azure-auth-method.md）。
+# クライアントシークレット等の長期間有効な静的資格情報は使わない。
 #
 # 前提:
 #   - `az login` 済みであること

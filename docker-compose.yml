@@ -1,5 +1,5 @@
 # Kong Gatewayが3系統のRoute/Serviceをフロントする構成（docs/design-brief.md参照）。
-# ネットワーク分離の考え方は docs/decisions/0002-mcp-llm-route-network-isolation.md を参照。
+# ネットワーク分離の考え方は docs/OBO.md を参照。
 # Konnectは使用しない（Gateway単体、Postgres backed）。
 
 networks:
@@ -57,7 +57,7 @@ services:
       - "8000:8000"
       # Admin API。decK CLIをホスト側から実行するために公開する（ローカル検証専用、本番運用は想定しない）
       - "8001:8001"
-      # MCP/LLM Route用の内部専用ポートは意図的にここで公開しない（ADR-0002参照）
+      # MCP/LLM Route用の内部専用ポートは意図的にここで公開しない（docs/OBO.md参照）
     environment:
       KONG_DATABASE: postgres
       KONG_PG_HOST: kong-db

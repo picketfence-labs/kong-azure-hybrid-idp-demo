@@ -1,6 +1,7 @@
 # MCPエンドポイント用Route（docs/design-brief.md 3節「Kong側のプラグインチェーン」2番目）。
 # Next.jsエージェント（サーバーサイド）のみが呼び出す経路。ブラウザからは到達させない
-# 想定だが、Kongの実装上は完全には分離できないため docs/decisions/0002 を参照。
+# 想定だが、Kongの`proxy_listen`はRoute単位でポートを分離できないため、実際にはKong全体で
+# 同一のRouterテーブルが評価される（Docker Composeでポート自体を非公開にすることでのみ保護、docs/OBO.md参照）。
 #
 # openid-connect: token_exchange(grant_type=jwt_bearer, provider=microsoft)でEntra ID OBOを実行。
 # ai-mcp-proxy: 自己完結の conversion-listener モード（将来Tool追加時にlistener+conversion-onlyへ移行、design-brief 2節「将来」参照）。
