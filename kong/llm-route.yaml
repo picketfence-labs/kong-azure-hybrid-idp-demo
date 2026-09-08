@@ -1,6 +1,6 @@
 # LLM（Azure OpenAI）アクセス用Route（docs/design-brief.md 3節「Kong側のプラグインチェーン」3番目）。
 # Next.jsエージェント（サーバーサイド）のみが呼び出す経路。追加認証は掛けず、
-# Docker Compose上のネットワーク到達性で保護する想定（実際の制約はdocs/decisions/0002参照）。
+# Docker Compose上のネットワーク到達性で保護する想定（実際の制約はdocs/OBO.md参照）。
 #
 # ai-proxy-advancedがAzure OpenAIの認証情報・エンドポイント詳細を保持し、
 # エージェント側には抽象化されたエンドポイントを提供する（design-brief 3節）。

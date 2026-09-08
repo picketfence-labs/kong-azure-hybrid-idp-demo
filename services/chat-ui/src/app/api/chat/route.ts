@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     baseURL: `${KONG_BASE_URL}/llm`,
     // ai-proxy-advancedがAzure OpenAIの認証情報を保持するため、ここでのAPIキーは
     // Kong側では検証されない（このRouteには追加認証を掛けない設計。design-brief 3節、
-    // 実際の保護はADR-0002参照）。SDKがAuthorizationヘッダーの送信を必須とするための
+    // 実際の保護はdocs/OBO.md参照）。SDKがAuthorizationヘッダーの送信を必須とするための
     // ダミー値。
     apiKey: "kong-manages-auth",
   });
