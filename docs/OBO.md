@@ -148,6 +148,6 @@ sequenceDiagram
 
 ## 関連ドキュメント
 - [design-brief.md](./design-brief.md) — 要件・アーキテクチャの正本
-- [decisions/0002-mcp-llm-route-network-isolation.md](./decisions/0002-mcp-llm-route-network-isolation.md) — Route②/③をブラウザから隔離する方式とその限界
-- [troubleshooting-log.md](./troubleshooting-log.md) — `ai-mcp-proxy`の自己リクエストが同じKongルーターを再度通過する挙動など、実機検証で判明した詳細
+- [decisions/](./decisions/) — 個別の設計判断（選択肢・判断基準）。ADRとして随時追記
+- [troubleshooting-log.md](./troubleshooting-log.md) — 実機検証で判明した挙動の詳細
 - [TESTING.md](../TESTING.md) — 実際にログインしてACLの許可/拒否を確認する手順

@@ -17,7 +17,7 @@
 - `services/`: Group 2専用UIは`services/insurance-ui`のように、既存の`services/chat-ui`と並列の新規ディレクトリにする
 
 ## 基本設計
-[docs/design-brief.md](./docs/design-brief.md) を必ず参照すること。Group 1・Group 2それぞれのProjectゴール・要件（現在＋将来）・アーキテクチャ・技術スタック・検証方法・成果物を記載済み。全論点はPicketfence Labs Obsidian Vault側とのヒアリングで確定済みで、着手前の再確認は不要（ただし実装中に新たな判断ポイントが見つかった場合は下記「アーキテクチャ上の分岐点」の手順に従う）。**Group 2は当初「SAMLグループ」として設計が進んでいたが、実装着手前に公式`saml`プラグインの機能不足が判明しOIDC方式へ転換した経緯がある。[ADR-0003](./docs/decisions/0003-group2-adfs-auth-protocol.md)を必ず参照すること**。
+[docs/design-brief.md](./docs/design-brief.md) を必ず参照すること。Group 1・Group 2それぞれのProjectゴール・要件（現在＋将来）・アーキテクチャ・技術スタック・検証方法・成果物を記載済み。全論点はPicketfence Labs Obsidian Vault側とのヒアリングで確定済みで、着手前の再確認は不要（ただし実装中に新たな判断ポイントが見つかった場合は下記「アーキテクチャ上の分岐点」の手順に従う）。**Group 2は当初「SAMLグループ」として設計が進んでいたが、実装着手前に公式`saml`プラグインの機能不足が判明しOIDC方式へ転換した経緯がある。詳細は[docs/design-brief.md](./docs/design-brief.md)のGroup 2冒頭「方針転換の経緯」を必ず参照すること**（本リポジトリの`docs/decisions/`は新規Project扱いのためリセット済み。今後の判断ポイントはここへADRとして記録していく）。
 
 ## 開発フロー
 - 本リポジトリは**public**。`main`ブランチのbranch protection有効化を試みる（PR必須、`enforce_admins: true`）。publicリポジトリはGitHub Freeプランでも有効化できることが別リポジトリ（`kong-api-bundle-insurance`）の実例で確認済み（private限定の403制約はここでは該当しない見込み）
@@ -84,7 +84,7 @@
 - `ai-proxy-advanced`でAzure OpenAIへのアクセスを抽象化
 
 ### Group 2（ADFSグループ、新規）
-- IdPはADFS（Entra IDからフェデレーション）。**プロトコルはOIDC**（SAMLではない、[ADR-0003](./docs/decisions/0003-group2-adfs-auth-protocol.md)参照）。ADFSのOIDC/OAuth2エンドポイント（`/adfs/.well-known/openid-configuration`）に対し`openid-connect`プラグインで通常の認可コードフローを実施する（OBOなし）
+- IdPはADFS（Entra IDからフェデレーション）。**プロトコルはOIDC**（SAMLではない、経緯は[docs/design-brief.md](./docs/design-brief.md)のGroup 2冒頭参照）。ADFSのOIDC/OAuth2エンドポイント（`/adfs/.well-known/openid-configuration`）に対し`openid-connect`プラグインで通常の認可コードフローを実施する（OBOなし）
 - 認可ロジックは新規カスタムLuaプラグイン（仮称`legacy-authz-adapter`）で実装する。IDトークンのクレーム（属性値=グループID）を読み取り、レガシー認可サービス相当のロジックでグループを確定、ヘッダー設定＋Service単位の`allowed_groups`と照合したアクセス可否判定を1つのプラグインで行う。**`openid-connect`の`groups_claim`/`groups`だけで宣言的に済ませる簡略化は不採用**（このデモの主眼がカスタムプラグイン化そのものにあるため）
 - バックエンドは`kong-api-bundle-insurance`のGHCR公開コンテナ6種（`product`/`customer`/`simulation`/`application`/`policy`/`claim`）をそのままpullして使う（新規実装なし）
 - グループ⇔APIアクセスマトリクスは`docs/design-brief.md`Group 2節を参照

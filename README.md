@@ -7,11 +7,11 @@
 
 **Konnectは使用しません**（Kong Gateway単体、Postgres backed）。
 
-着手前の基本設計は [docs/design-brief.md](./docs/design-brief.md) を参照してください（Group 1・Group 2それぞれの要件・アーキテクチャを記載）。個別の設計判断（検討した選択肢・判断基準）は [docs/decisions/](./docs/decisions/) に記録します。**Group 2はSAML方式からOIDC方式への転換を経ており、経緯は [ADR-0003](./docs/decisions/0003-group2-adfs-auth-protocol.md) を参照してください**。
+着手前の基本設計は [docs/design-brief.md](./docs/design-brief.md) を参照してください（Group 1・Group 2それぞれの要件・アーキテクチャを記載）。個別の設計判断（検討した選択肢・判断基準）は、今後 [docs/decisions/](./docs/decisions/) にADRとして記録していきます。**Group 2はSAML方式からOIDC方式への転換を経ており、経緯は [docs/design-brief.md](./docs/design-brief.md) のGroup 2冒頭「方針転換の経緯」を参照してください**。
 
 ![Chat UI画面](./docs/testing-images/02-chat-inquiry-only-details-denied.png)
 
-**Group 1を実際に動かして動作確認したい方は [TESTING.md](./TESTING.md) を参照してください**（スクリーンショット付きの検証手順）。**OBO（On-Behalf-Of）によるトークン交換の仕組みを図解付きで理解したい方は [docs/OBO.md](./docs/OBO.md) を参照してください**。Group 2のセットアップ手順は実装完了後に本READMEへ追記します。
+**実際に動かして動作確認したい方は [TESTING.md](./TESTING.md) を参照してください**（スクリーンショット付きの検証手順。Group 1は実機検証済み、Group 2は実装完了後に同じ体裁で追記します）。**OBO（On-Behalf-Of）によるトークン交換の仕組みを図解付きで理解したい方は [docs/OBO.md](./docs/OBO.md) を参照してください**。Group 2のセットアップ手順は実装完了後に本READMEへ追記します。
 
 ## 全体アーキテクチャ
 
@@ -73,7 +73,7 @@ bun test      # ユニットテスト（検索AND条件・ID一意取得等）
 ## セットアップ手順
 
 ### Azure/Entra ID 認証（Terraformを実行する前に一度だけ）
-Terraform（`terraform/`配下）は、クライアントシークレット等の静的資格情報を持たず、Azure CLIの委譲認証に委ねる（判断根拠: [ADR-0001](./docs/decisions/0001-terraform-azure-auth-method.md)）。
+Terraform（`terraform/`配下）は、クライアントシークレット等の静的資格情報を持たず、Azure CLIの委譲認証に委ねる。
 
 1. Azure CLIをインストール: `brew install azure-cli`
 2. ログイン: `az login`（ブラウザが開くのでAzureアカウントでサインインする）
@@ -106,7 +106,7 @@ Terraform（`terraform/`配下）は、クライアントシークレット等�
 3. ローカルでの構文・スキーマ検証（Kongへの接続不要）: `deck file validate kong/login-route.yaml kong/mcp-route.yaml kong/llm-route.yaml`
 4. 実際のKongへ反映: `deck gateway sync kong/login-route.yaml kong/mcp-route.yaml kong/llm-route.yaml`
 
-ネットワーク分離の考え方（MCP/LLM Routeをブラウザから到達不可にする方式と、その実際の限界）は[ADR-0002](./docs/decisions/0002-mcp-llm-route-network-isolation.md)を参照。
+MCP/LLM Routeは、Docker Composeの内部専用ネットワーク（`kong-internal`、`internal: true`）配下に置くことでブラウザから到達不可にしている（詳細は[docs/OBO.md](./docs/OBO.md)の全体構成図を参照）。
 
 ### Chat UI/エージェント
 
