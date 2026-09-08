@@ -2,14 +2,19 @@
 
 このページだけを見れば、design-brief（[docs/design-brief.md](./docs/design-brief.md) 5節）が定めた検証項目を一通り実地確認できます。セットアップ手順（`docker compose up` / `deck gateway sync`）は済んでいる前提です。未セットアップの場合は [README.md](./README.md) の「セットアップ手順」を先に行ってください。
 
-## アクセス先
+> [!note]
+> 2026-09-08: 本リポジトリはフォークだがPicketfence Labs内では新規Project扱いのため、`docs/decisions/`・`docs/troubleshooting-log.md`をリセットした（詳細はCLAUDE.md参照）。以下のGroup 1（Chat UI）のシナリオ・スクリーンショットはフォーク元での実機検証結果をそのまま引き継いでいる（機能に変更が無いため）が、本リポジトリでの実機再検証はまだ実施していない。Group 2の実装が一段落した段階で、Group 1・Group 2を通しで再検証する予定。
+
+## Group 1: Chat UI（Entra ID OIDC/OBO）
+
+### アクセス先
 
 | 用途 | URL |
 |---|---|
 | Chat UI（ここからログインして操作します） | http://localhost:8000/ |
 | Kong Admin API（decK同期状態の確認用、通常は使いません） | http://localhost:8001/ |
 
-## テストユーザー
+### テストユーザー
 
 Entra IDテナント上に作成済みの3ユーザーです。全員同じパスワード体系のダミーアカウントで、実在の人物とは無関係です。
 
@@ -21,9 +26,9 @@ Entra IDテナント上に作成済みの3ユーザーです。全員同じパ�
 
 複数ユーザーを行き来する場合、Entra IDのアカウント選択画面で「別のアカウントを使用する」を選ぶか、ブラウザのプライベートウィンドウを使うとスムーズです。
 
-## テストデータの生成タイミングと構造
+### テストデータの生成タイミングと構造
 
-`services/demo-api/src/data.ts`のモジュールトップレベルで`generateCustomers(100, 42)`が**プロセス起動時に一度だけ**実行され、以降はメモリ上の配列を参照するだけ（リクエスト毎の再生成やDB永続化は無い）。シード（`42`）固定の擬似乱数（mulberry32）のみから機械的に組み立てているため、プロセス/コンテナを再起動しても**毎回全く同じ100件（IDを含む）が再現**される。実在の人物・実在の番号は一切参照していない架空データ（生成方法の詳細: [docs/troubleshooting-log.md](./docs/troubleshooting-log.md)）。
+`services/demo-api/src/data.ts`のモジュールトップレベルで`generateCustomers(100, 42)`が**プロセス起動時に一度だけ**実行され、以降はメモリ上の配列を参照するだけ（リクエスト毎の再生成やDB永続化は無い）。固定シード（`42`）のmulberry32擬似乱数生成器のみから機械的に組み立てているため、プロセス/コンテナを再起動しても**毎回全く同じ100件（IDを含む）が再現**される。氏名は姓・名それぞれ10種の一般的な単語からの組み合わせ、マイナンバー相当値は12桁の乱数文字列（チェックデジット等の実仕様は再現していない）。実在の人物・実在の番号は一切参照していない完全な架空データ。
 
 生成される1件のフィールド構成:
 
@@ -56,7 +61,7 @@ Entra IDテナント上に作成済みの3ユーザーです。全員同じパ�
 
 ---
 
-## シナリオ①: 未割当ユーザーはログインできないこと
+### シナリオ①: 未割当ユーザーはログインできないこと
 
 1. http://localhost:8000/ を開く（未ログインなら自動的にEntra IDのログイン画面へ遷移します）
 
@@ -70,7 +75,7 @@ Entra IDテナント上に作成済みの3ユーザーです。全員同じパ�
 
    ![ログイン拒否画面（AADSTS50105）](./docs/testing-images/06-entraid-login-blocked.png)
 
-## シナリオ②: Inquiryのみユーザー（検索はできるが詳細取得はできない）
+### シナリオ②: Inquiryのみユーザー（検索はできるが詳細取得はできない）
 
 1. ユーザー②（`demo-inquiry-only@...`）でログイン（今度はEntra IDの認証を通過し、Chat UIへ遷移します）
 2. 画面上部に「ログイン中: Demo User - Inquiry Only（demo-inquiry-only@...）」と表示されることを確認（Kongが転送したトークン情報がChat UIに反映されている証跡）
@@ -79,7 +84,7 @@ Entra IDテナント上に作成済みの3ユーザーです。全員同じパ�
 
    ![Inquiryのみユーザー: 検索は成功、詳細は取得不可](./docs/testing-images/02-chat-inquiry-only-details-denied.png)
 
-## シナリオ③: 両方権限ユーザー（検索も詳細取得もできる）
+### シナリオ③: 両方権限ユーザー（検索も詳細取得もできる）
 
 1. ログアウトし、ユーザー③（`demo-both-apis@...`）でログイン
 2. 画面上部の表示がユーザー③に変わることを確認
@@ -91,7 +96,7 @@ Entra IDテナント上に作成済みの3ユーザーです。全員同じパ�
 
 ---
 
-## その他の確認項目（design-brief 5節、画面操作以外での確認）
+### その他の確認項目（design-brief 5節、画面操作以外での確認）
 
 上記シナリオで画面から確認できない残りの項目は、コードや通信ログから確認できます:
 
@@ -99,3 +104,73 @@ Entra IDテナント上に作成済みの3ユーザーです。全員同じパ�
 - **ログアウト**: 画面右上の「ログアウト」ボタン → Entra IDのサインアウト画面へ遷移 → 再度トップページへ戻ると未ログイン状態に戻っていること
 - **顧客IDの推測不可**: Customer Details用の一覧・検索エンドポイントは存在しないため（[services/demo-api/src/server.ts](./services/demo-api/src/server.ts)参照）、Customer Inquiryを経由せずに顧客IDを得る手段が無いこと
 - **エージェントのAzure非依存**: `services/chat-ui/src/app/api/chat/route.ts`がAzure OpenAIのエンドポイント・APIバージョン・デプロイ名を一切保持せず、固定のモデル名`kong-demo-llm`のみでKongの`/llm`エンドポイントを呼び出していること
+
+---
+
+## Group 2: 保険業務API（ADFS/OIDC・レガシー認可ロジック）
+
+> [!warning] 未実装（雛形のみ）
+> Group 2（`insurance-ui`・`legacy-authz-adapter`カスタムプラグイン・6バックエンドサービスのdecK設定）はまだ実装されていません。以下はGroup 1と体裁を揃えるためのTESTING.md雛形で、実装完了後にアクセス先・スクリーンショット・実測結果で埋める。
+
+### アクセス先（実装後に確定）
+
+| 用途 | URL |
+|---|---|
+| Group 2専用UI（insurance-ui） | 未定（Group 1のChat UIとは別ページ/別ポート） |
+| Kong Admin API | http://localhost:8001/ |
+
+### テストユーザー・グループ定義（マスタデータ、design-brief確定分）
+
+ADFS（Entra IDからフェデレーション）上のテストユーザーは、属性値がそのままグループIDとして発行される。5グループ全パターンを確認できるよう、各グループに最低1ユーザーを割り当てる想定（実際のUPN・パスワードは実装時にここへ追記する）。
+
+| グループID | 想定ユーザー（UPN） | パスワード |
+|---|---|---|
+| `it` | 未定 | 未定 |
+| `sales` | 未定 | 未定 |
+| `new-business` | 未定 | 未定 |
+| `policy-admin` | 未定 | 未定 |
+| `claim` | 未定 | 未定 |
+
+### グループ⇔APIアクセスマトリクス（design-brief確定、正本）
+
+| グループ | product | customer | simulation | application | policy | claim |
+|---|---|---|---|---|---|---|
+| it | ○ | ○ | ○ | ○ | ○ | ○ |
+| sales | ○ | ○ | ○ | ○ | ○ | × |
+| new-business | ○ | ○ | ○ | ○ | ○ | × |
+| policy-admin | ○ | ○ | × | × | ○ | ○ |
+| claim | × | ○ | × | × | ○ | ○ |
+
+バックエンドは[kong-api-bundle-insurance](https://github.com/picketfence-labs/kong-api-bundle-insurance)のGHCR公開コンテナ6種をそのままpullして使うため、新規のテストデータ生成は発生しない（既存イメージ内蔵データをそのまま利用）。
+
+---
+
+### シナリオ①: 未認証アクセスはADFSへリダイレクトされること（実装後に実施）
+
+1. Group 2専用UIを開く（未ログインなら自動的にADFSのログイン画面へ遷移することを確認）
+2. 直接のAPI応答が返らないこと（design-brief 5節1点目）を確認
+
+   ![スクリーンショット未取得](未定)
+
+### シナリオ②〜⑥: グループ×API アクセスマトリクスの全パターン確認（実装後に実施）
+
+5グループそれぞれでログインし、6API（product/customer/simulation/application/policy/claim）を順に呼び出して、上記マトリクス通りに許可/拒否されることを確認する。1グループ=1シナリオとして、Group 1と同様にログイン後の画面キャプチャ（自分のグループID表示＋各API呼び出し結果の一覧）を添付する。
+
+| シナリオ | グループ | 確認内容 | スクリーンショット |
+|---|---|---|---|
+| ② | `it` | 6API全て許可 | 未取得 |
+| ③ | `sales` | claimのみ拒否、他5つ許可 | 未取得 |
+| ④ | `new-business` | claimのみ拒否、他5つ許可 | 未取得 |
+| ⑤ | `policy-admin` | simulation/applicationが拒否、product/customer/policy/claimが許可 | 未取得 |
+| ⑥ | `claim` | product/simulation/applicationが拒否、customer/policy/claimが許可 | 未取得 |
+
+### その他の確認項目（design-brief 5節、画面操作以外での確認、実装後に実施）
+
+- **ネットワーク到達性**: Kong（ローカル）↔ADFS（Azure）間で、NSG許可リスト外のIPからはADFSエンドポイントに到達できないこと
+- **クレーム→ヘッダー変換**: `legacy-authz-adapter`がIDトークンのクレームから正しくグループIDを読み取り、`X-Group-Id`等のヘッダーに設定していること（Kongアクセスログまたはバックエンド側のリクエストログで確認）
+
+---
+
+## 知見の記録
+- 設計判断（選択肢・判断基準・想定と実際の差分）: [docs/decisions/](./docs/decisions/)
+- 想定通りに動かなかったこと（漏れなく記録）: [docs/troubleshooting-log.md](./docs/troubleshooting-log.md)
