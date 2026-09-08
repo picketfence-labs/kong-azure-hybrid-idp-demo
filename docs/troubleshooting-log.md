@@ -56,3 +56,21 @@
 - **原因**: このセッションではpicketfence自身のAzureサブスクリプションへの`az login`が未実施（利用者確認済み、次のステップ）。ダミー値を使った検証のため、実際のAzure環境に対する`terraform plan`の妥当性（クォータ・リージョン提供状況・実際のIAM権限等）はまだ検証できていない
 - **対処・回避方法**: `az login`実施後、`terraform/adfs.tfvars.example`をコピーして実際の値を設定し、`terraform plan -var-file=adfs.tfvars`を実行することで初めて実際の差分確認ができる。`terraform apply`はCLAUDE.mdのエスカレーション条件に該当するため、利用者の明示確認後に実行する
 - **未検証のまま残る設計判断**: 属性値=グループIDの格納先としてEntra IDの標準属性`department`を採用したが、Microsoft Entra Domain Services経由でのAD属性同期・ADFSのLDAP Attribute Store経由での読み取りが実際に機能するかは実機未検証（design-brief Group2「未検証・実装時に確認が必要な技術的前提」、docs/adfs-setup-runbook.md 7節に要検証事項として明記）
+
+## 2026-09-08 ADFS実インフラのterraform apply: Microsoft.AADリソースプロバイダ未登録で`azurerm_active_directory_domain_service`作成が失敗
+- **何を期待していたか**: `terraform apply`（Group 2の30リソースに`-target`でスコープ限定）が最後まで成功すること
+- **実際どうだったか**: `random_password`/`azuread_user`（テストユーザー5件・ドメイン参加用管理者）・`azurerm_resource_group`/`azurerm_virtual_network`/`azurerm_subnet`/`azurerm_network_security_group`/`azurerm_public_ip`/`azurerm_network_interface`/`azurerm_role_assignment`（AADDSサービスプリンシパルへの`Network Contributor`）までは全て成功したが、`azurerm_active_directory_domain_service.this`の作成で`409 Conflict: MissingSubscriptionRegistration: The subscription is not registered to use namespace 'Microsoft.AAD'`エラーで失敗し、applyが中断した
+- **原因**: picketfence自身のAzureサブスクリプション（`Azure subscription 1`、真新しいサブスクリプションで過去にEntra Domain Servicesを使ったことがない）で、`Microsoft.AAD`リソースプロバイダが未登録だったため。Azureでは初めて使うリソースプロバイダをサブスクリプション単位で明示登録する必要がある仕様（Terraformコード自体の不備ではない）
+- **対処・回避方法**: `az provider register --namespace Microsoft.AAD`を実行（読み取り専用のサブスクリプション設定変更で、リソース作成やコスト発生を伴わないため、CLAUDE.mdのエスカレーション条件には該当しないと判断し、利用者への追加確認なしでその場で対処。登録完了まで数分の非同期処理）。登録完了後、同じterraform planファイルではなく再度`-target`スコープで`terraform apply`を実行し直すことで、既に作成済みのリソースはスキップされ、`azurerm_active_directory_domain_service`以降の未完了分のみ再試行される（Terraformのstate管理により冪等に再開可能）
+
+## 2026-09-08〜09 Entra Domain Servicesの作成に長時間要し中断、`terraform apply`のプロセスkillはAzure側の非同期処理を止められないことが判明
+- **何を期待していたか**: `Microsoft.AAD`プロバイダ登録後の`terraform apply`再実行が、合理的な時間内（数分〜十数分程度を想定）に完了すること
+- **実際どうだったか**: `azurerm_active_directory_domain_service.this`の作成が74分経過しても完了せず、利用者から「時間がかかりすぎるのでキャンセルしてください」と指示があったため、バックグラウンド実行していた`terraform apply`のシェルプロセスを`TaskStop`で停止した。しかしその直後に`az resource show`で実際のAzure側の状態を確認したところ、**Entra Domain Services自体はAzure側では既に`provisioningState: Succeeded`で作成が完了していた**。つまり、ローカルの`terraform apply`プロセスをkillしても、Azure REST API側で既に受理・実行中の非同期作成処理は一切止まらず、そのまま最後まで進行していた
+- **原因**: Azure Resource Managerの非同期操作（Long-Running Operation）は、それを開始したクライアント（この場合はterraform/azurermプロバイダ）が後から切断・終了しても、サーバー側で処理が継続する仕様のため。Azureにはこの種の作成処理を明示的に中断するAPIが用意されていない
+- **対処・回避方法**: 「キャンセル」の意図を実現するには、作成済みのリソースを実際に削除する必要があると判断し、以下を実施した:
+  1. `az resource list --resource-group rg-kong-adfs-demo`で実際に何が作成済みかを確認（VNet/NSG/Public IP/NIC/Entra Domain Services本体、および後者に付随してAzureが自動生成したLB/PIP/NICも含む）
+  2. 利用者に「terraformにimportして完了まで進める」「何もしない」「リソースグループごと削除して完全に中止」の3択を提示し、「リソースグループごと削除」を選択いただいた
+  3. `az group delete --name rg-kong-adfs-demo --yes --no-wait`でリソースグループを削除（Entra Domain Servicesはterraform stateに未記録だったため、terraform destroyでは削除できず、Azure CLIでの直接削除が必要だった）
+  4. Terraform state上に残っていたEntra IDオブジェクト（テストユーザー5件・ドメイン参加用管理者・AADDS管理者グループ・サービスプリンシパル・ロール割り当て）は`terraform destroy -target=...`で削除。ただしVNet/サブネットはAADDSが自動生成したNIC（terraform管理外）が紐づいていたため、`az group delete`の完了を待ってから`terraform destroy`を再実行し、既に実体が無いことを検出させてstateから除去した
+  5. `az group exists`と`terraform state list`の両方で、Azure側・state側ともに何も残っていないことを確認
+- **教訓（今後の運用への反映）**: `terraform apply`（特に長時間かかるリソースを含むもの）を非同期・バックグラウンドで実行する場合、「キャンセル」はローカルプロセスの停止だけでは不十分で、Azure側に実際に作成されたリソースの後始末（`import`して完了させる/実削除する）が別途必要になる。次回Group 2のADFS実インフラに再挑戦する際は、Entra Domain Servicesの作成に少なくとも74分以上（今回は打ち切ったため上限不明）かかることを見込み、時間に余裕のあるタイミングで着手すること
