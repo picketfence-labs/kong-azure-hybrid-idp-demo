@@ -105,3 +105,81 @@ services:
       kong:
         condition: service_healthy
     restart: on-failure
+
+  # --- Group 2（ADFSグループ）バックエンドAPI 6種 ---
+  # kong-api-bundle-insurance（picketfence-labs/kong-api-bundle-insurance）のGHCR公開イメージを
+  # そのままpullして使う（新規実装なし、design-brief Group 2「2. 要件」参照）。
+  # 全サービス共通でFastAPI/uvicornが:8000で待ち受け、GET /healthを提供する（同リポジトリ
+  # docs/ARCHITECTURE.md「コンテナ構成」参照）。ブラウザ・ホストからは直接到達させず、
+  # kong-internal経由でKongからのみアクセスさせる（demo-apiと同じ隔離方針）。
+  insurance-product:
+    image: ghcr.io/picketfence-labs/insurance-product:v0.1.1
+    container_name: insurance-product
+    networks:
+      - kong-internal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+
+  insurance-customer:
+    image: ghcr.io/picketfence-labs/insurance-customer:v0.1.1
+    container_name: insurance-customer
+    networks:
+      - kong-internal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+
+  insurance-simulation:
+    image: ghcr.io/picketfence-labs/insurance-simulation:v0.1.1
+    container_name: insurance-simulation
+    networks:
+      - kong-internal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+
+  insurance-application:
+    image: ghcr.io/picketfence-labs/insurance-application:v0.1.1
+    container_name: insurance-application
+    networks:
+      - kong-internal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+
+  insurance-policy:
+    image: ghcr.io/picketfence-labs/insurance-policy:v0.1.1
+    container_name: insurance-policy
+    networks:
+      - kong-internal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+
+  insurance-claim:
+    image: ghcr.io/picketfence-labs/insurance-claim:v0.1.1
+    container_name: insurance-claim
+    networks:
+      - kong-internal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
