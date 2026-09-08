@@ -74,3 +74,53 @@ output "test_user_credentials" {
   }
   sensitive = true
 }
+
+# --- Group 2（ADFSグループ）: picketfence自身のAzureサブスクリプション/テナント向け ---
+
+output "adfs_auth_check" {
+  description = "Terraformが現在どのpicketfence側Entra IDテナント/Azureサブスクリプションに対して認証されているかの確認用（terraform/adfs_providers.tf）"
+  value = {
+    entra_tenant_id       = data.azuread_client_config.picketfence.tenant_id
+    entra_object_id       = data.azuread_client_config.picketfence.object_id
+    azure_subscription_id = data.azurerm_client_config.picketfence.subscription_id
+  }
+}
+
+output "adfs_vm_public_ip" {
+  description = "ADFSサーバーVMへのRDP接続先（docs/adfs-setup-runbook.md参照）"
+  value       = azurerm_public_ip.adfs_vm.ip_address
+}
+
+output "adfs_vm_local_admin_credentials" {
+  description = "ADFSサーバーVMのローカル管理者アカウント（初期構築・トラブル時の復旧用）"
+  value = {
+    username = var.adfs_vm_admin_username
+    password = random_password.adfs_vm_admin.result
+  }
+  sensitive = true
+}
+
+output "adfs_domain_admin_credentials" {
+  description = "ドメイン参加・ADFSロール/ファーム構築（docs/adfs-setup-runbook.md）で使うドメイン管理者アカウント"
+  value = {
+    user_principal_name = azuread_user.domain_join_admin.user_principal_name
+    password            = random_password.domain_join_admin.result
+  }
+  sensitive = true
+}
+
+output "entra_domain_services_domain_name" {
+  description = "Microsoft Entra Domain Servicesのドメイン名（ADFSサーバーのドメイン参加先）"
+  value       = var.entra_domain_services_domain_name
+}
+
+output "insurance_test_user_credentials" {
+  description = "Group 2（5グループ）の検証用ユーザーのサインイン情報。TESTING.mdの表に転記して使う"
+  value = {
+    for key, user in azuread_user.insurance_test_user : key => {
+      user_principal_name = user.user_principal_name
+      password            = random_password.insurance_test_user[key].result
+    }
+  }
+  sensitive = true
+}

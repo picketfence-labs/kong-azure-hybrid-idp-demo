@@ -140,7 +140,26 @@ bun install
 bun run dev   # http://localhost:3000 単体では認証ヘッダーが無いため、Kong経由（http://localhost:8000/insurance/）でのアクセスが前提
 ```
 
-Kong側への反映（`kong/insurance-ui-route.yaml`・`kong/insurance-<service>.yaml`）は、ADFS実インフラ（`terraform/adfs_*.tf`・`terraform/insurance_*.tf`、未実装）が発行する`DECK_ADFS_ISSUER`/`DECK_ADFS_CLIENT_ID`/`DECK_ADFS_CLIENT_SECRET`/`DECK_ADFS_GROUP_CLAIM_NAME`と、decK専用の`DECK_ADFS_SESSION_SECRET`（`openssl rand -base64 32`等で生成、Terraform outputではない）が揃ってから行う。
+Kong側への反映（`kong/insurance-ui-route.yaml`・`kong/insurance-<service>.yaml`）は、ADFS実インフラ（下記「ADFS/Entra Domain Servicesインフラ」）が発行する`DECK_ADFS_ISSUER`/`DECK_ADFS_CLIENT_ID`/`DECK_ADFS_CLIENT_SECRET`/`DECK_ADFS_GROUP_CLAIM_NAME`と、decK専用の`DECK_ADFS_SESSION_SECRET`（`openssl rand -base64 32`等で生成、Terraform outputではない）が揃ってから行う。
+
+### ADFS/Entra Domain Servicesインフラ（Group 2、picketfence自身のAzure環境）
+
+`terraform/adfs_*.tf`（ネットワーク・Microsoft Entra Domain Services・ADFS VM）・`terraform/insurance_*.tf`（5グループのEntra IDテストユーザー）が、design-brief Group2「3. アーキテクチャ」のADFS/Entra側インフラを担う。ADFSロールのインストール・ファーム構築・OAuthサーバー設定（Application Group/Relying Party登録、Claim Issuance Policy）はTerraformの管理範囲外とし、[docs/adfs-setup-runbook.md](./docs/adfs-setup-runbook.md)に従って手動で行う（自動化度合いの判断根拠は[docs/decisions/0001-adfs-vm-provisioning-automation.md](./docs/decisions/0001-adfs-vm-provisioning-automation.md)参照）。
+
+**このインフラはKong社自身のEntra IDテナント（`kongstrong.onmicrosoft.com`、Group 1が使う既定のTerraformプロバイダ）とは別の、picketfence自身のAzureサブスクリプション・Entra IDテナントに構築する**（`terraform/adfs_providers.tf`のプロバイダエイリアス`azurerm.picketfence`/`azuread.picketfence`）。**Microsoft Entra Domain Services・ADFSサーバー用VMは稼働中は継続コストが発生する**（CLAUDE.mdエスカレーション条件2番目。デモ終了後は`terraform destroy`で削除する前提）。
+
+1. picketfence自身のアカウントでAzure CLIへ追加ログイン: `az login`（`kongstrong.onmicrosoft.com`用のログインとは別に、picketfence側アカウントでも実行する。Azure CLIは複数アカウントのトークンを同時にキャッシュできるため、`az account set`でアクティブ切り替えする必要はない）
+2. 変数ファイルを準備:
+   ```bash
+   cd terraform
+   cp adfs.tfvars.example adfs.tfvars
+   # picketfence_azure_subscription_id / picketfence_azure_tenant_id / nsg_allowed_source_cidr等を編集
+   ```
+3. 構文・スキーマ検証（Azureへの接続不要）: `terraform validate`
+4. 差分確認: `terraform plan -var-file=adfs.tfvars`
+5. **`terraform apply`はCLAUDE.mdのエスカレーション条件に該当するため、実行前に必ず確認を取ること**
+6. `apply`後、[docs/adfs-setup-runbook.md](./docs/adfs-setup-runbook.md)の手順でADFSロール・ファーム構築・OAuthサーバー設定を行う
+7. `terraform output`から得られる値をKong側のdecK同期に使う（runbook 9節参照）
 
 ## 知見の記録
 - 設計判断（選択肢・判断基準・想定と実際の差分）: [docs/decisions/](./docs/decisions/)（1判断＝1ファイル、`TEMPLATE.md`参照）
