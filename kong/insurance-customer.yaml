@@ -1,0 +1,39 @@
+# customer API用Route（Group 2）。設計・注意点はkong/insurance-product.yamlのコメント参照。
+# 実バックエンド（ghcr.io/picketfence-labs/insurance-customer）の実パスは複数形
+# （/customers、/customers/{customer_id}）。
+_format_version: "3.0"
+services:
+  - name: insurance-customer
+    protocol: http
+    host: insurance-customer
+    port: 8000
+    path: /customers
+    routes:
+      - name: insurance-customer
+        protocols:
+          - http
+        paths:
+          - /customer
+        plugins:
+          - name: openid-connect
+            config:
+              issuer: "${{ env "DECK_ADFS_ISSUER" }}"
+              client_id:
+                - "${{ env "DECK_ADFS_CLIENT_ID" }}"
+              client_secret:
+                - "${{ env "DECK_ADFS_CLIENT_SECRET" }}"
+              auth_methods:
+                - bearer
+              upstream_headers:
+                - header: X-ADFS-Group-Claim
+                  path:
+                    - "${{ env "DECK_ADFS_GROUP_CLAIM_NAME" }}"
+          - name: legacy-authz-adapter
+            config:
+              # design-brief グループ⇔APIアクセスマトリクス: customerは5グループ全て許可
+              allowed_groups:
+                - it
+                - sales
+                - new-business
+                - policy-admin
+                - claim

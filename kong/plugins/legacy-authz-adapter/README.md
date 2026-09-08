@@ -26,4 +26,4 @@ Group 2（ADFSグループ）の認可ロジックを再現するカスタムプ
 luajit kong/plugins/legacy-authz-adapter/spec/authz_spec.lua
 ```
 
-`handler.lua`（Kongプラグインとしての結線: ヘッダー読み取り・`kong.response.exit`・`kong.service.request.set_header`）は、Kong本体を介した結合テストが必要なため、`kong/insurance-*.yaml`でのRoute/Service配線後に`deck gateway sync`＋実リクエストで確認する（[TESTING.md](../../../TESTING.md) Group 2節参照）。
+`handler.lua`（Kongプラグインとしての結線: ヘッダー読み取り・`kong.response.exit`・`kong.service.request.set_header`）は、Kong本体を介した結合テストが必要。プラグインのロード自体（`schema.lua`がKongに正しく認識されること）は、`docker-compose.yml`のマウント設定（`KONG_PLUGINS`/`KONG_LUA_PACKAGE_PATH`）で実際にKongを起動し、Admin APIの`GET /plugins/schema/legacy-authz-adapter`が期待通りの内容を返すことで確認済み（`docs/troubleshooting-log.md`参照）。実際のリクエストを通した`access`フェーズの動作確認は、Kong Enterpriseライセンスが必要（`openid-connect`と組み合わせた検証のため）なため、`kong/insurance-*.yaml`でのRoute/Service配線後に`deck gateway sync`＋実リクエストで確認する（[TESTING.md](../../../TESTING.md) Group 2節参照）。

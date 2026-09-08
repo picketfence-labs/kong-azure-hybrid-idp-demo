@@ -1,0 +1,52 @@
+# product API用Route（Group 2、design-brief Group2「3. アーキテクチャ」参照）。
+# ADFSが発行したアクセストークン（Bearer、属性値=グループIDのクレームを含む）をopenid-connectが
+# 検証し、legacy-authz-adapter（kong/plugins/legacy-authz-adapter/）がそのクレームからグループを
+# 確定・このServiceのallowed_groupsと照合してアクセス可否を判定する（OBOなし、design-brief
+# Group2「2. 要件」）。
+#
+# 認可コードフロー自体（ログイン・セッション・アクセストークン発行）はinsurance-ui用の別Route
+# （insurance-ui実装時に追加）が担う。ここではBearerトークンの検証のみ行う（Group 1の
+# kong/mcp-route.yamlと同様の構造だが、OBOのtoken_exchangeは行わない）。
+#
+# 実バックエンド（ghcr.io/picketfence-labs/insurance-product）の実パスは複数形（/products、
+# /products/{product_id}）だが、design-brief記載の外部パスは単数形（/product）。
+# service.pathで内部パスへ変換し、route（strip_pathデフォルトtrue）で外部プレフィックスを
+# 除去する（実機確認: docs/troubleshooting-log.md参照）。
+#
+# 要検証（ADFS実インフラ構築後）: ADFSのOIDC issuer discovery URLの実際の形式、
+# クレーム名（DECK_ADFS_GROUP_CLAIM_NAME）、bearer検証のみのRouteでclient_secretが
+# 実際に必須か（docs/design-brief.md「未検証・実装時に確認が必要な技術的前提」参照）。
+_format_version: "3.0"
+services:
+  - name: insurance-product
+    protocol: http
+    host: insurance-product
+    port: 8000
+    path: /products
+    routes:
+      - name: insurance-product
+        protocols:
+          - http
+        paths:
+          - /product
+        plugins:
+          - name: openid-connect
+            config:
+              issuer: "${{ env "DECK_ADFS_ISSUER" }}"
+              client_id:
+                - "${{ env "DECK_ADFS_CLIENT_ID" }}"
+              client_secret:
+                - "${{ env "DECK_ADFS_CLIENT_SECRET" }}"
+              auth_methods:
+                - bearer
+              upstream_headers:
+                - header: X-ADFS-Group-Claim
+                  path:
+                    - "${{ env "DECK_ADFS_GROUP_CLAIM_NAME" }}"
+          - name: legacy-authz-adapter
+            config:
+              allowed_groups:
+                - it
+                - sales
+                - new-business
+                - policy-admin

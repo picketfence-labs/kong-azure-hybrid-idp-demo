@@ -1,0 +1,37 @@
+# claim API用Route（Group 2）。設計・注意点はkong/insurance-product.yamlのコメント参照。
+# 実バックエンド（ghcr.io/picketfence-labs/insurance-claim）の実パスは複数形
+# （/claims、/claims/{claim_id}）。
+_format_version: "3.0"
+services:
+  - name: insurance-claim
+    protocol: http
+    host: insurance-claim
+    port: 8000
+    path: /claims
+    routes:
+      - name: insurance-claim
+        protocols:
+          - http
+        paths:
+          - /claim
+        plugins:
+          - name: openid-connect
+            config:
+              issuer: "${{ env "DECK_ADFS_ISSUER" }}"
+              client_id:
+                - "${{ env "DECK_ADFS_CLIENT_ID" }}"
+              client_secret:
+                - "${{ env "DECK_ADFS_CLIENT_SECRET" }}"
+              auth_methods:
+                - bearer
+              upstream_headers:
+                - header: X-ADFS-Group-Claim
+                  path:
+                    - "${{ env "DECK_ADFS_GROUP_CLAIM_NAME" }}"
+          - name: legacy-authz-adapter
+            config:
+              # design-brief グループ⇔APIアクセスマトリクス: claimはit/policy-admin/claimのみ許可
+              allowed_groups:
+                - it
+                - policy-admin
+                - claim
