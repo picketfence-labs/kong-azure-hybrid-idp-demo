@@ -1,0 +1,37 @@
+# application API用Route（Group 2）。設計・注意点はkong/insurance-product.yamlのコメント参照。
+# 実バックエンド（ghcr.io/picketfence-labs/insurance-application）の実パスは複数形
+# （/applications、/applications/{application_id}）。
+_format_version: "3.0"
+services:
+  - name: insurance-application
+    protocol: http
+    host: insurance-application
+    port: 8000
+    path: /applications
+    routes:
+      - name: insurance-application
+        protocols:
+          - http
+        paths:
+          - /application
+        plugins:
+          - name: openid-connect
+            config:
+              issuer: "${{ env "DECK_ADFS_ISSUER" }}"
+              client_id:
+                - "${{ env "DECK_ADFS_CLIENT_ID" }}"
+              client_secret:
+                - "${{ env "DECK_ADFS_CLIENT_SECRET" }}"
+              auth_methods:
+                - bearer
+              upstream_headers:
+                - header: X-ADFS-Group-Claim
+                  path:
+                    - "${{ env "DECK_ADFS_GROUP_CLAIM_NAME" }}"
+          - name: legacy-authz-adapter
+            config:
+              # design-brief グループ⇔APIアクセスマトリクス: applicationはit/sales/new-businessのみ許可
+              allowed_groups:
+                - it
+                - sales
+                - new-business

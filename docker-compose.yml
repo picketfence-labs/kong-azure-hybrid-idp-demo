@@ -58,6 +58,12 @@ services:
       # Admin API。decK CLIをホスト側から実行するために公開する（ローカル検証専用、本番運用は想定しない）
       - "8001:8001"
       # MCP/LLM Route用の内部専用ポートは意図的にここで公開しない（docs/OBO.md参照）
+    volumes:
+      # Group 2のカスタムプラグイン（kong/plugins/legacy-authz-adapter/）をKong標準の
+      # カスタムプラグイン配置規約（/usr/local/custom/kong/plugins/<name>）でマウントする。
+      # マウント先にkong/pluginsのネスト構造を持たせることで、KONG_LUA_PACKAGE_PATHの
+      # ベースパスから require("kong.plugins.legacy-authz-adapter.*") が解決できるようにする。
+      - ./kong/plugins:/usr/local/custom/kong/plugins:ro
     environment:
       KONG_DATABASE: postgres
       KONG_PG_HOST: kong-db
@@ -69,6 +75,10 @@ services:
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
       KONG_ADMIN_GUI_LISTEN: "off"
       KONG_LOG_LEVEL: "info"
+      # legacy-authz-adapter（Group 2）を有効化。プラグインのロード自体は実機確認済み
+      # （Admin APIのGET /plugins/schema/legacy-authz-adapterが正しく応答、docs/troubleshooting-log.md参照）。
+      KONG_PLUGINS: "bundled,legacy-authz-adapter"
+      KONG_LUA_PACKAGE_PATH: "/usr/local/custom/?.lua;/usr/local/custom/?/init.lua;;"
     depends_on:
       kong-migrations:
         condition: service_completed_successfully
