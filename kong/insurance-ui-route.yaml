@@ -1,0 +1,65 @@
+# insurance-ui（Group 2専用UI）アクセス用Route。Chat UI用Route（kong/login-route.yaml）と
+# 同じ役割だが、IdPがADFS（design-brief Group2「3. アーキテクチャ」1番目）。OBOは行わない。
+#
+# 同一Kongインスタンス（docker-compose.ymlのkongサービス、ポート8000）上でChat UI
+# （kong/login-route.yaml、paths: ["/"]）と共存させるため、insurance-uiは"/insurance"配下に
+# マウントする（Kongのルーターはより具体的なpathを優先して評価するため"/"には影響しない）。
+# strip_path: false でパスプレフィックスをそのままNext.jsへ転送し、Next.js側のbasePath設定
+# （services/insurance-ui/next.config.ts）でルーティング・静的アセット配信を解決する。
+#
+# ログインボタンは持たない: このRoute自体がopenid-connectのセッション認証で保護されているため、
+# 未ログインでアクセスすると常にADFSへのリダイレクトが発生する（Group 1のkong/login-route.yaml
+# と同じ挙動。design-brief 検証方法1点目、TESTING.md Group2シナリオ①）。
+#
+# client_id/client_secret/issuerはkong/insurance-<service>.yaml（6バックエンドRoute）と同一の
+# ADFS Relying Party設定を再利用する。ここで認可コードフローにより発行されたアクセストークンを
+# upstream_access_token_header（デフォルト"authorization:bearer"）でinsurance-uiへ転送し、
+# 同じトークンを各バックエンドRouteへBearerとして再提示する
+# （services/insurance-ui/src/app/api/access-check/route.ts参照）。同一client_idでの
+# トークン使い回しがADFS側で問題なく機能するかは未検証（ADFS実インフラ構築後に確認、
+# docs/design-brief.md Group2「未検証・実装時に確認が必要な技術的前提」参照）。
+#
+# セッションcookieはChat UI用Route（デフォルトcookie名"session"）と衝突しないよう
+# session_cookie_nameを明示的に分ける。
+_format_version: "3.0"
+services:
+  - name: insurance-ui
+    protocol: http
+    host: insurance-ui
+    port: 3000
+    routes:
+      - name: insurance-ui
+        protocols:
+          - http
+        paths:
+          - /insurance
+        strip_path: false
+        plugins:
+          - name: openid-connect
+            config:
+              issuer: "${{ env "DECK_ADFS_ISSUER" }}"
+              client_id:
+                - "${{ env "DECK_ADFS_CLIENT_ID" }}"
+              client_secret:
+                - "${{ env "DECK_ADFS_CLIENT_SECRET" }}"
+              auth_methods:
+                - authorization_code
+                - session
+              scopes:
+                - openid
+                - profile
+              # terraform/adfs_*.tf（未実装）のredirect_uri/post_logout_redirect_uri設定と
+              # 一致させる。
+              redirect_uri:
+                - "http://localhost:8000/insurance/login/callback"
+              logout_redirect_uri:
+                - "http://localhost:8000/insurance/logout/callback"
+              logout_query_arg: logout
+              session_secret: "${{ env "DECK_ADFS_SESSION_SECRET" }}"
+              session_cookie_name: adfs_session
+              # design-brief通り属性値=グループIDのクレームをそのままヘッダーへ転送する
+              # （kong/insurance-<service>.yamlの各バックエンドRouteと同じクレーム名を参照）。
+              upstream_headers:
+                - header: X-ADFS-Group-Claim
+                  path:
+                    - "${{ env "DECK_ADFS_GROUP_CLAIM_NAME" }}"

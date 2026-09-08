@@ -37,3 +37,15 @@
 - **原因**: セッション起動時の`--add-dir`指定漏れ（明示的な追加依頼をしていなかったため）
 - **対処・回避方法**: `openid-connect`の`upstream_headers`によるクレーム→ヘッダー転送は、本リポジトリのGroup 1で実機検証済みの仕組み（`kong/login-route.yaml`で`name`/`preferred_username`クレームを`X-User-Name`/`X-User-Email`へ転送）であり、これをそのまま流用する設計とした（`legacy-authz-adapter`は生ヘッダーを読むだけで、openid-connect側の内部実装詳細に依存しない）。プラグインのpriority（`100`、openid-connectの後に実行）・schema.luaのDSL（`typedefs.no_consumer`等）はKongの公開されている一般的なプラグイン開発規約に基づく設計判断で、`kong-ee`固有の非公開情報には依存していない
 - **検証結果（同日追記）**: `KONG_PLUGINS: bundled,legacy-authz-adapter`＋`KONG_LUA_PACKAGE_PATH`でのマウント方式（`docker-compose.yml`、`/usr/local/custom/kong/plugins/legacy-authz-adapter`）を、実際に`kong/kong-gateway-dev:pr-21082-ubuntu`を起動して確認した。Kongは正常に起動（`kong health`成功）し、Admin API `GET /plugins/schema/legacy-authz-adapter`が`schema.lua`通りの内容を返すことを確認。**プラグインのロード自体は実機で確認済み**。一方、`deck gateway validate`は本ライセンス無し（`KONG_LICENSE_DATA={}`のダミー値）だと`services`/`routes`/`plugins`（`openid-connect`だけでなくコアエンティティも含め）全てが`HTTP 403 Enterprise license missing or expired`で拒否されることを確認した。openid-connectの設定内容（`issuer`/`client_id`等のフィールド）そのものの妥当性は、実際のKong Enterpriseライセンスが無いと検証できない（Group 1と同じ制約。検証用コンテナはテスト後に`docker compose down`で削除済み）
+
+## 2026-09-08 insurance-ui実装: Kong経由の実ルーティングはライセンス制約のため未検証、アプリ単体では確認済み
+- **何を期待していたか**: `kong/insurance-ui-route.yaml`（新規）を`deck gateway sync`で実際のKongへ反映し、ブラウザ相当のリクエストで`/insurance`配下がinsurance-uiコンテナへ到達すること、ログイン後のグループヘッダー転送・6API呼び出し結果の表示までを一通り確認したかった
+- **実際どうだったか**: `deck gateway sync kong/insurance-ui-route.yaml`は想定通り`403 Enterprise license missing or expired`（Service作成自体が拒否される、上記2026-09-08エントリと同一の既知制約）で失敗した。そのため、Kong自体を経由したエンドツーエンドの確認はできなかった
+- **原因**: 検証用コンテナにダミーのライセンス値（`KONG_LICENSE_DATA=dummy`）しか設定していないため（実ライセンスが無い環境自体は既知の制約、ADFS実インフラ構築時に本ライセンスが用意される想定）
+- **対処・回避方法**: insurance-uiコンテナを起動し、コンテナに直接（Kongを介さず）リクエストを送ることで、アプリ側のロジックのみ切り分けて確認した:
+  - `GET /insurance/`（未ログイン相当、`x-adfs-group-claim`ヘッダー無し）→ 200、「未ログイン」表示
+  - 同じリクエストに`x-adfs-group-claim: it`ヘッダーを付与 → 200、「ログイン中: グループ it」・ログアウトボタン表示（Kongの`upstream_headers`が転送する想定のヘッダーをこのアプリが正しく解釈することを確認）
+  - `GET /insurance/api/access-check?api=product`（`Authorization`ヘッダー無し）→ 401（Kongがトークンを転送しなかった場合の防御が機能）
+  - 同、`api=doesnotexist`（許可リスト外）→ 400（allowlist方式のバリデーションが機能）
+  - 同、`Authorization: Bearer dummy`付き、`api=product`→ アプリが`http://kong:8000/product`へ正しくfetchし、Kong側にRouteが存在しないため`404`が返り、それをそのまま`{"allowed":false,"status":404}`として返却（Kong未経由の`404`と、legacy-authz-adapterによる実際の`403`拒否は区別できないが、リレー処理自体の配線は正しく機能していることを確認）
+  - **Kong自体を介した`openid-connect`（ADFS向け設定）・`legacy-authz-adapter`と組み合わせた実際の許可/拒否判定は、Kong Enterpriseライセンス取得後かつADFS実インフラ構築後に持ち越し**（Group 1・既存6バックエンドRouteと同じ制約）

@@ -109,14 +109,14 @@ Entra IDテナント上に作成済みの3ユーザーです。全員同じパ�
 
 ## Group 2: 保険業務API（ADFS/OIDC・レガシー認可ロジック）
 
-> [!warning] 未実装（雛形のみ）
-> Group 2（`insurance-ui`・`legacy-authz-adapter`カスタムプラグイン・6バックエンドサービスのdecK設定）はまだ実装されていません。以下はGroup 1と体裁を揃えるためのTESTING.md雛形で、実装完了後にアクセス先・スクリーンショット・実測結果で埋める。
+> [!warning] 実装済み・実機検証は未実施
+> `insurance-ui`・`legacy-authz-adapter`カスタムプラグイン・6バックエンドサービスのdecK設定（`kong/insurance-<service>.yaml`）・insurance-ui用Route（`kong/insurance-ui-route.yaml`）は実装済み。ただしADFS実インフラ（`terraform/adfs_*.tf`等）が未構築のため、Kong Enterpriseライセンス配下での`deck gateway sync`＋ADFSログインを伴うエンドツーエンドの実機検証はまだ実施できていない（insurance-uiアプリ単体でのヘッダー解釈・API疎通ロジックの検証は`docs/troubleshooting-log.md`の2026-09-08エントリ参照）。以下はGroup 1と体裁を揃えるためのTESTING.md雛形で、ADFS実インフラ構築・実機検証完了後にスクリーンショット・実測結果で埋める。
 
-### アクセス先（実装後に確定）
+### アクセス先
 
 | 用途 | URL |
 |---|---|
-| Group 2専用UI（insurance-ui） | 未定（Group 1のChat UIとは別ページ/別ポート） |
+| Group 2専用UI（insurance-ui） | http://localhost:8000/insurance/（Group 1のChat UIとは別pathでKongの同一エントリポイントにマウント） |
 | Kong Admin API | http://localhost:8001/ |
 
 ### テストユーザー・グループ定義（マスタデータ、design-brief確定分）

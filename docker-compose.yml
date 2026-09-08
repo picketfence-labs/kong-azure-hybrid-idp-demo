@@ -193,3 +193,22 @@ services:
       timeout: 5s
       retries: 5
     restart: on-failure
+
+  # Group 2専用UI（design-brief Group2「2. 要件」、kong/insurance-ui-route.yaml）。
+  # ブラウザから直接到達させず、Kongのkong/insurance-ui-route.yaml経由でのみアクセスさせる
+  # （chat-uiと同じ隔離方針、kong-netには参加させない）。
+  insurance-ui:
+    build:
+      context: ./services/insurance-ui
+    container_name: insurance-ui
+    networks:
+      - kong-internal
+    environment:
+      PORT: "3000"
+      # このコンテナ自身からKongの各insurance-<service>用Routeを呼ぶ際のベースURL
+      # （kong-internal経由、services/insurance-ui/src/app/api/access-check/route.ts参照）。
+      KONG_INTERNAL_BASE_URL: "http://kong:8000"
+    depends_on:
+      kong:
+        condition: service_healthy
+    restart: on-failure

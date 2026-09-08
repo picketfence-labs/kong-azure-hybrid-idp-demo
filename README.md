@@ -11,7 +11,7 @@
 
 ![Chat UI画面](./docs/testing-images/02-chat-inquiry-only-details-denied.png)
 
-**実際に動かして動作確認したい方は [TESTING.md](./TESTING.md) を参照してください**（スクリーンショット付きの検証手順。Group 1は実機検証済み、Group 2は実装完了後に同じ体裁で追記します）。**OBO（On-Behalf-Of）によるトークン交換の仕組みを図解付きで理解したい方は [docs/OBO.md](./docs/OBO.md) を参照してください**。Group 2のセットアップ手順は実装完了後に本READMEへ追記します。
+**実際に動かして動作確認したい方は [TESTING.md](./TESTING.md) を参照してください**（スクリーンショット付きの検証手順。Group 1は実機検証済み、Group 2は実装完了後に同じ体裁で追記します）。**OBO（On-Behalf-Of）によるトークン交換の仕組みを図解付きで理解したい方は [docs/OBO.md](./docs/OBO.md) を参照してください**。Group 2のUI（insurance-ui）のセットアップ手順は下記「Group 2専用UI（insurance-ui）」に追記済みです。ADFS実インフラ構築後のKong側`deck sync`手順は別途追記します。
 
 ## 全体アーキテクチャ
 
@@ -123,6 +123,24 @@ cd services/chat-ui
 bun install
 bun run dev   # http://localhost:3000 単体では認証ヘッダーが無いため、Kong経由（http://localhost:8000）でのアクセスが前提
 ```
+
+### Group 2専用UI（insurance-ui）
+
+`services/insurance-ui`（Next.js App Router）。design-brief Group2「3. アーキテクチャ」の通り、Chat UIと同じ方針でOAuthクライアント実装を持たず、`kong/insurance-ui-route.yaml`のopenid-connectプラグイン（ADFS向け、認可コードフロー＋セッション、OBOなし）が認証・ログアウトを担う。Next.js側はKongが転送するヘッダーを信頼するだけ:
+
+- `X-ADFS-Group-Claim`: ADFSが発行したIDトークンのクレーム（design-brief通り属性値=グループID）。画面上部に「ログイン中: グループ `<id>`」として表示する
+- `Authorization: Bearer <access_token>`: insurance-uiログインで取得したアクセストークン。`src/app/api/access-check/route.ts`がこれを各バックエンドRoute（`kong/insurance-<service>.yaml`、`auth_methods: bearer`）へそのまま再提示し、`legacy-authz-adapter`による許可/拒否をKong経由で確認する（OBOは行わない点のみGroup 1と異なる）
+
+Kong上で`kong/login-route.yaml`（`/`）と共存させるため、`/insurance`配下にマウントしている（`services/insurance-ui/next.config.ts`の`basePath`、`kong/insurance-ui-route.yaml`の`strip_path: false`）。
+
+ローカル起動（Docker Composeを使わない場合）:
+```bash
+cd services/insurance-ui
+bun install
+bun run dev   # http://localhost:3000 単体では認証ヘッダーが無いため、Kong経由（http://localhost:8000/insurance/）でのアクセスが前提
+```
+
+Kong側への反映（`kong/insurance-ui-route.yaml`・`kong/insurance-<service>.yaml`）は、ADFS実インフラ（`terraform/adfs_*.tf`・`terraform/insurance_*.tf`、未実装）が発行する`DECK_ADFS_ISSUER`/`DECK_ADFS_CLIENT_ID`/`DECK_ADFS_CLIENT_SECRET`/`DECK_ADFS_GROUP_CLAIM_NAME`と、decK専用の`DECK_ADFS_SESSION_SECRET`（`openssl rand -base64 32`等で生成、Terraform outputではない）が揃ってから行う。
 
 ## 知見の記録
 - 設計判断（選択肢・判断基準・想定と実際の差分）: [docs/decisions/](./docs/decisions/)（1判断＝1ファイル、`TEMPLATE.md`参照）
