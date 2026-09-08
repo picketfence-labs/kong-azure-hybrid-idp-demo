@@ -30,3 +30,9 @@
   - コンテナ単体で動かした場合のAPIルートパスは**複数形**（例: product サービスは`/products`・`/products/{product_id}`）。design-brief記載の「パス」列（`/product`等、Kong Gateway経由フルデモでの外部公開パス）とは異なる（単数/複数の差）。本リポジトリでdecKのRoute/Serviceを書く際は、外部パス（`insurance-product.yaml`の命名規則に合わせるなら`/product`等）と実バックエンドパス（`/products`）の対応関係を明示的に設計する必要がある
 - **原因**: 不明（`kong-api-bundle-insurance`側の設計判断。REST慣習として一覧系エンドポイントを複数形にしたと推測されるが未確認）
 - **対処・回避方法**: `docker-compose.yml`に6サービスを追加する際、上記で確認したイメージ参照・ポート・`/health`ヘルスチェックをそのまま使用。パスの単数/複数差は、次のステップ（Kong Service/Route + `legacy-authz-adapter`カスタムプラグインの配線）で対応する
+
+## 2026-09-08 legacy-authz-adapter実装: kong-eeソース未参照（今回のセッションで未マウント）で設計を確定
+- **何を期待していたか**: CLAUDE.md「ローカル参照」節の通り、カスタムプラグイン開発では`kong-ee`（Kong EEソースコード）を一次情報源として参照する想定だった
+- **実際どうだったか**: 今回のセッションでは`kong-ee`が`additionalDirectories`にマウントされておらず参照できなかった（リポジトリ自体は`/Users/shinichi.hashitanikonghq.com/LOCAL_REPO/kong-ee`に存在することは`find`で確認したが、このセッションから直接読めるパスではなかった）
+- **原因**: セッション起動時の`--add-dir`指定漏れ（明示的な追加依頼をしていなかったため）
+- **対処・回避方法**: `openid-connect`の`upstream_headers`によるクレーム→ヘッダー転送は、本リポジトリのGroup 1で実機検証済みの仕組み（`kong/login-route.yaml`で`name`/`preferred_username`クレームを`X-User-Name`/`X-User-Email`へ転送）であり、これをそのまま流用する設計とした（`legacy-authz-adapter`は生ヘッダーを読むだけで、openid-connect側の内部実装詳細に依存しない）。プラグインのpriority（`100`、openid-connectの後に実行）・schema.luaのDSL（`typedefs.no_consumer`等）はKongの公開されている一般的なプラグイン開発規約に基づく設計判断で、`kong-ee`固有の非公開情報には依存していない。ただし実際のKong（`kong/kong-gateway-dev:pr-21082-ubuntu`）に対する`deck gateway validate`・実リクエストでの動作確認はまだ実施していない（次のKong Service/Route配線ステップで実施）
