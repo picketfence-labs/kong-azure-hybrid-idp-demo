@@ -49,3 +49,10 @@
   - 同、`api=doesnotexist`（許可リスト外）→ 400（allowlist方式のバリデーションが機能）
   - 同、`Authorization: Bearer dummy`付き、`api=product`→ アプリが`http://kong:8000/product`へ正しくfetchし、Kong側にRouteが存在しないため`404`が返り、それをそのまま`{"allowed":false,"status":404}`として返却（Kong未経由の`404`と、legacy-authz-adapterによる実際の`403`拒否は区別できないが、リレー処理自体の配線は正しく機能していることを確認）
   - **Kong自体を介した`openid-connect`（ADFS向け設定）・`legacy-authz-adapter`と組み合わせた実際の許可/拒否判定は、Kong Enterpriseライセンス取得後かつADFS実インフラ構築後に持ち越し**（Group 1・既存6バックエンドRouteと同じ制約）
+
+## 2026-09-08 ADFS実インフラのTerraformコード化: az login未実施のためterraform applyは未実施、validate/planレベルまで確認
+- **何を期待していたか**: `terraform/adfs_*.tf`・`terraform/insurance_*.tf`（新規、ADR-0001参照）が構文・プロバイダスキーマとして正しいか、実際のterraform CLIで確認したかった
+- **実際どうだったか**: `terraform init -backend=false`は成功（`azurerm`/`azuread`/`random`プロバイダのダウンロード含む）。`terraform validate`も成功（`azurerm_active_directory_domain_service`・`azurerm_virtual_machine_extension`（`JsonADDomainExtension`）・`azuread_service_principal`（AADDSの固定`client_id`）等、記憶を頼りに書いたリソース引数名がプロバイダスキーマと一致していることを確認）。`terraform plan`はダミーの`picketfence_azure_subscription_id`/`picketfence_azure_tenant_id`（全ゼロGUID）を与えたところ、想定通り`azurerm`/`azuread`プロバイダエイリアス（`terraform/adfs_providers.tf`）の認証段階で失敗した（Azure CLIが該当テナント/サブスクリプションの認証情報を持っていないため）
+- **原因**: このセッションではpicketfence自身のAzureサブスクリプションへの`az login`が未実施（利用者確認済み、次のステップ）。ダミー値を使った検証のため、実際のAzure環境に対する`terraform plan`の妥当性（クォータ・リージョン提供状況・実際のIAM権限等）はまだ検証できていない
+- **対処・回避方法**: `az login`実施後、`terraform/adfs.tfvars.example`をコピーして実際の値を設定し、`terraform plan -var-file=adfs.tfvars`を実行することで初めて実際の差分確認ができる。`terraform apply`はCLAUDE.mdのエスカレーション条件に該当するため、利用者の明示確認後に実行する
+- **未検証のまま残る設計判断**: 属性値=グループIDの格納先としてEntra IDの標準属性`department`を採用したが、Microsoft Entra Domain Services経由でのAD属性同期・ADFSのLDAP Attribute Store経由での読み取りが実際に機能するかは実機未検証（design-brief Group2「未検証・実装時に確認が必要な技術的前提」、docs/adfs-setup-runbook.md 7節に要検証事項として明記）

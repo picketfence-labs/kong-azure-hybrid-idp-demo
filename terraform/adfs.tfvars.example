@@ -1,0 +1,16 @@
+# Group 2（ADFSグループ）専用インフラ用のterraform変数。コピーして使う（コミット対象外）:
+#   cp terraform/adfs.tfvars.example terraform/adfs.tfvars
+#   terraform plan -var-file=adfs.tfvars
+#
+# picketfence自身のAzureサブスクリプション＋Entra IDテナント（Kong社のkongstrong.onmicrosoft.com
+# とは別）向けの値。事前に `az login` で当該アカウントを追加ログイン済みであること
+# （terraform/adfs_providers.tf参照）。
+
+picketfence_azure_subscription_id = ""
+picketfence_azure_tenant_id       = ""
+
+# テナントの既定ドメイン（*.onmicrosoft.com）とは別の、どこにも登録されていないドメイン名。
+entra_domain_services_domain_name = "adfsdemo.picketfencelabs.local"
+
+# Kong実行環境（および作業端末）のグローバルIP。CIDR形式（例: "203.0.113.10/32"）。
+nsg_allowed_source_cidr = ""
