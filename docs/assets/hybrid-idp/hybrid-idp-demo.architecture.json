@@ -1,0 +1,329 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "ハイブリッドIdPデモ：目標構成",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1190,
+      650
+    ],
+    "views": [
+      {
+        "id": "group1",
+        "label": "Group 1：Entra ID",
+        "focus": [
+          "chat-ui",
+          "entra-oidc",
+          "entra-id",
+          "obo-acl",
+          "customer-api"
+        ],
+        "note": "既存のOBOとTool ACLを維持。ChatのLLM呼び出しは別経路。"
+      },
+      {
+        "id": "group2",
+        "label": "Group 2：ADFS＋RDB",
+        "focus": [
+          "test-ui",
+          "adfs-oidc",
+          "adfs",
+          "entra-ds",
+          "legacy-authz",
+          "authz-db",
+          "insurance-api"
+        ],
+        "note": "属性対応とAPI許可条件をPostgreSQLへ集約する目標設計。"
+      },
+      {
+        "id": "decision",
+        "label": "認可の停止地点",
+        "focus": [
+          "legacy-authz",
+          "authz-db",
+          "insurance-api"
+        ],
+        "note": "拒否・DB障害ならバックエンドを呼ばない。図の選択は実行結果ではない。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "entra-id",
+      "type": "security",
+      "label": "Entra ID",
+      "sublabel": "Group 1 / 別画面でログイン",
+      "pos": [
+        340,
+        30
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "chat-ui",
+      "type": "frontend",
+      "label": "Chat UI / エージェント",
+      "sublabel": "Group 1：既存機能を維持",
+      "pos": [
+        30,
+        190
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "entra-oidc",
+      "type": "security",
+      "label": "Kong：Entra認証",
+      "sublabel": "認可コード / セッション",
+      "pos": [
+        340,
+        190
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "obo-acl",
+      "type": "security",
+      "label": "Kong：OBO / Tool ACL",
+      "sublabel": "交換後のgroupsで認可",
+      "pos": [
+        650,
+        190
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "customer-api",
+      "type": "backend",
+      "label": "顧客API",
+      "sublabel": "照会 / 詳細：許可Toolのみ",
+      "pos": [
+        960,
+        190
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "test-ui",
+      "type": "frontend",
+      "label": "Test UI ＋ Archify",
+      "sublabel": "Group 2：経路・判定を表示",
+      "pos": [
+        30,
+        370
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "adfs-oidc",
+      "type": "security",
+      "label": "Kong：ADFS認証",
+      "sublabel": "OIDC / API Bearer検証",
+      "pos": [
+        340,
+        370
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "legacy-authz",
+      "type": "security",
+      "label": "カスタム認可",
+      "sublabel": "属性取得 → DB照会 → 判定",
+      "pos": [
+        650,
+        370
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "insurance-api",
+      "type": "backend",
+      "label": "保険業務 6 API",
+      "sublabel": "許可時のみ到達",
+      "pos": [
+        960,
+        370
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "entra-ds",
+      "type": "cloud",
+      "label": "Entra Domain Services",
+      "sublabel": "Group 2のドメイン基盤",
+      "pos": [
+        30,
+        550
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "adfs",
+      "type": "security",
+      "label": "ADFS",
+      "sublabel": "Group 2 / 別画面でログイン",
+      "pos": [
+        340,
+        550
+      ],
+      "size": [
+        190,
+        68
+      ]
+    },
+    {
+      "id": "authz-db",
+      "type": "database",
+      "label": "PostgreSQL：認可マスタ",
+      "sublabel": "属性対応 ＋ API許可条件",
+      "pos": [
+        650,
+        550
+      ],
+      "size": [
+        190,
+        68
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "g1-entry",
+      "from": "chat-ui",
+      "to": "entra-oidc",
+      "label": "ログイン",
+      "variant": "default"
+    },
+    {
+      "id": "g1-mcp",
+      "from": "entra-oidc",
+      "to": "obo-acl",
+      "label": "APIトークンを再提示",
+      "variant": "default"
+    },
+    {
+      "id": "g1-allow",
+      "from": "obo-acl",
+      "to": "customer-api",
+      "label": "許可Toolを実行",
+      "variant": "emphasis"
+    },
+    {
+      "id": "g1-login",
+      "from": "entra-oidc",
+      "to": "entra-id",
+      "label": "OIDC",
+      "variant": "security"
+    },
+    {
+      "id": "g1-exchange",
+      "from": "obo-acl",
+      "to": "entra-id",
+      "label": "OBO交換",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "right"
+    },
+    {
+      "id": "g2-entry",
+      "from": "test-ui",
+      "to": "adfs-oidc",
+      "label": "ログイン / API呼出",
+      "variant": "default"
+    },
+    {
+      "id": "g2-claims",
+      "from": "adfs-oidc",
+      "to": "legacy-authz",
+      "label": "検証済み属性",
+      "variant": "default"
+    },
+    {
+      "id": "g2-allow",
+      "from": "legacy-authz",
+      "to": "insurance-api",
+      "label": "許可時のみ",
+      "variant": "emphasis"
+    },
+    {
+      "id": "g2-login",
+      "from": "adfs-oidc",
+      "to": "adfs",
+      "label": "OIDC",
+      "variant": "security",
+      "labelDy": 84
+    },
+    {
+      "id": "g2-directory",
+      "from": "adfs",
+      "to": "entra-ds",
+      "label": "ドメイン認証",
+      "variant": "security"
+    },
+    {
+      "id": "g2-lookup",
+      "from": "legacy-authz",
+      "to": "authz-db",
+      "label": "属性・API条件を照会",
+      "variant": "default",
+      "labelDy": 84
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "図は設計、実測ではありません",
+      "items": [
+        "UI実イベントとの連動は開発側で実装。",
+        "選択・経路表示は構成説明のための操作です。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "認証先はサービスで固定",
+      "items": [
+        "ログインは別画面。図を表示した画面は維持。",
+        "有効なセッション利用時はIdPへ再遷移しません。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "デモの観測と範囲",
+      "items": [
+        "入力属性・照合条件・結果を表示。未確認は未確認。",
+        "Entra DS同期は事前処理。LLM経路は本図の範囲外。"
+      ]
+    }
+  ]
+}

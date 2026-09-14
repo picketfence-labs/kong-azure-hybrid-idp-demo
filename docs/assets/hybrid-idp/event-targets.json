@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "status": "integration-design-not-runtime-api",
+  "diagram": "hybrid-idp-demo.architecture.json",
+  "diagram_sha256": "e12c969ef28817b92cb9eb978be93658cf6d817e48f21a3ca6ce0843cbadfde2",
+  "nodes": {
+    "entra-id": "Entra ID",
+    "chat-ui": "Chat UI / エージェント",
+    "entra-oidc": "Kong：Entra認証",
+    "obo-acl": "Kong：OBO / Tool ACL",
+    "customer-api": "顧客API",
+    "test-ui": "Test UI ＋ Archify",
+    "adfs-oidc": "Kong：ADFS認証",
+    "legacy-authz": "カスタム認可",
+    "insurance-api": "保険業務 6 API",
+    "entra-ds": "Entra Domain Services",
+    "adfs": "ADFS",
+    "authz-db": "PostgreSQL：認可マスタ"
+  },
+  "edges": {
+    "g1-entry": {
+      "from": "chat-ui",
+      "to": "entra-oidc",
+      "label": "ログイン"
+    },
+    "g1-mcp": {
+      "from": "entra-oidc",
+      "to": "obo-acl",
+      "label": "APIトークンを再提示"
+    },
+    "g1-allow": {
+      "from": "obo-acl",
+      "to": "customer-api",
+      "label": "許可Toolを実行"
+    },
+    "g1-login": {
+      "from": "entra-oidc",
+      "to": "entra-id",
+      "label": "OIDC"
+    },
+    "g1-exchange": {
+      "from": "obo-acl",
+      "to": "entra-id",
+      "label": "OBO交換"
+    },
+    "g2-entry": {
+      "from": "test-ui",
+      "to": "adfs-oidc",
+      "label": "ログイン / API呼出"
+    },
+    "g2-claims": {
+      "from": "adfs-oidc",
+      "to": "legacy-authz",
+      "label": "検証済み属性"
+    },
+    "g2-allow": {
+      "from": "legacy-authz",
+      "to": "insurance-api",
+      "label": "許可時のみ"
+    },
+    "g2-login": {
+      "from": "adfs-oidc",
+      "to": "adfs",
+      "label": "OIDC"
+    },
+    "g2-directory": {
+      "from": "adfs",
+      "to": "entra-ds",
+      "label": "ドメイン認証"
+    },
+    "g2-lookup": {
+      "from": "legacy-authz",
+      "to": "authz-db",
+      "label": "属性・API条件を照会"
+    }
+  },
+  "state_vocabulary": [
+    "not_started",
+    "pending",
+    "succeeded",
+    "denied",
+    "failed",
+    "not_reached",
+    "unknown"
+  ],
+  "notes": [
+    "These are authored IDs, not a supported Archify event API.",
+    "Group 1 nodes combine multiple stages; correlate login, OBO and each Tool call separately.",
+    "Entra DS user synchronization is setup-time background context, not an event for every API request.",
+    "Do not infer an IdP page error or backend non-arrival from a browser timeout."
+  ]
+}
