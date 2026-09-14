@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "status": "proposed-review-fixture-not-runtime-seed",
+  "method": "GET",
+  "api_routes": [
+    {
+      "api_id": "insurance-product",
+      "entra_prefix": "/entra/product",
+      "adfs_prefix": null,
+      "upstream_base_path": "/products"
+    },
+    {
+      "api_id": "insurance-simulation",
+      "entra_prefix": "/entra/simulation",
+      "adfs_prefix": null,
+      "upstream_base_path": "/simulations"
+    },
+    {
+      "api_id": "insurance-application",
+      "entra_prefix": "/entra/application",
+      "adfs_prefix": null,
+      "upstream_base_path": "/applications"
+    },
+    {
+      "api_id": "insurance-customer",
+      "entra_prefix": "/entra/customer",
+      "adfs_prefix": "/adfs/customer",
+      "upstream_base_path": "/customers"
+    },
+    {
+      "api_id": "insurance-policy",
+      "entra_prefix": null,
+      "adfs_prefix": "/adfs/policy",
+      "upstream_base_path": "/policies"
+    },
+    {
+      "api_id": "insurance-claim",
+      "entra_prefix": null,
+      "adfs_prefix": "/adfs/claim",
+      "upstream_base_path": "/claims"
+    }
+  ],
+  "role_order": [
+    "it",
+    "sales",
+    "new-business",
+    "policy-admin",
+    "claim"
+  ],
+  "entra_columns": [
+    "product",
+    "simulation",
+    "application",
+    "customer"
+  ],
+  "entra_matrix": [
+    [
+      1,
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      0,
+      0,
+      1
+    ],
+    [
+      0,
+      0,
+      0,
+      1
+    ]
+  ],
+  "adfs_columns": [
+    "customer",
+    "policy",
+    "claim"
+  ],
+  "adfs_matrix": [
+    [
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      1,
+      0
+    ],
+    [
+      1,
+      1,
+      0
+    ],
+    [
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      1,
+      1
+    ]
+  ],
+  "attribute_mapping": [
+    {
+      "attribute_value": "D-IT",
+      "group_id": "it"
+    },
+    {
+      "attribute_value": "D-SALES",
+      "group_id": "sales"
+    },
+    {
+      "attribute_value": "D-NEW-BUSINESS",
+      "group_id": "new-business"
+    },
+    {
+      "attribute_value": "D-POLICY-ADMIN",
+      "group_id": "policy-admin"
+    },
+    {
+      "attribute_value": "D-CLAIM",
+      "group_id": "claim"
+    }
+  ],
+  "entra_group_ids": "Resolve actual Security Group object IDs from the approved environment; role labels are not token claim values.",
+  "counts": {
+    "backends": 6,
+    "ingress_routes": 7,
+    "entra_cells": 20,
+    "entra_allow": 15,
+    "entra_deny": 5,
+    "adfs_cells": 15,
+    "adfs_allow": 13,
+    "adfs_deny": 2
+  }
+}
