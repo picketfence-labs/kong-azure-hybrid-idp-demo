@@ -61,7 +61,7 @@
 - **何を期待していたか**: `terraform apply`（Group 2の30リソースに`-target`でスコープ限定）が最後まで成功すること
 - **実際どうだったか**: `random_password`/`azuread_user`（テストユーザー5件・ドメイン参加用管理者）・`azurerm_resource_group`/`azurerm_virtual_network`/`azurerm_subnet`/`azurerm_network_security_group`/`azurerm_public_ip`/`azurerm_network_interface`/`azurerm_role_assignment`（AADDSサービスプリンシパルへの`Network Contributor`）までは全て成功したが、`azurerm_active_directory_domain_service.this`の作成で`409 Conflict: MissingSubscriptionRegistration: The subscription is not registered to use namespace 'Microsoft.AAD'`エラーで失敗し、applyが中断した
 - **原因**: picketfence自身のAzureサブスクリプション（`Azure subscription 1`、真新しいサブスクリプションで過去にEntra Domain Servicesを使ったことがない）で、`Microsoft.AAD`リソースプロバイダが未登録だったため。Azureでは初めて使うリソースプロバイダをサブスクリプション単位で明示登録する必要がある仕様（Terraformコード自体の不備ではない）
-- **対処・回避方法**: `az provider register --namespace Microsoft.AAD`を実行（読み取り専用のサブスクリプション設定変更で、リソース作成やコスト発生を伴わないため、CLAUDE.mdのエスカレーション条件には該当しないと判断し、利用者への追加確認なしでその場で対処。登録完了まで数分の非同期処理）。登録完了後、同じterraform planファイルではなく再度`-target`スコープで`terraform apply`を実行し直すことで、既に作成済みのリソースはスキップされ、`azurerm_active_directory_domain_service`以降の未完了分のみ再試行される（Terraformのstate管理により冪等に再開可能）
+- **対処・回避方法**: `az provider register --namespace Microsoft.AAD`を実行（サブスクリプション設定の変更だが、リソース作成やコスト発生を伴わないため、CLAUDE.mdのエスカレーション条件には該当しないと判断し、利用者への追加確認なしでその場で対処。登録完了まで数分の非同期処理）。登録完了後、同じterraform planファイルではなく再度`-target`スコープで`terraform apply`を実行し直すことで、既に作成済みのリソースはスキップされ、`azurerm_active_directory_domain_service`以降の未完了分のみ再試行される（Terraformのstate管理により冪等に再開可能）
 
 ## 2026-09-08〜09 Entra Domain Servicesの作成に長時間要し中断、`terraform apply`のプロセスkillはAzure側の非同期処理を止められないことが判明
 - **何を期待していたか**: `Microsoft.AAD`プロバイダ登録後の`terraform apply`再実行が、合理的な時間内（数分〜十数分程度を想定）に完了すること
