@@ -2,64 +2,29 @@
   "schema_version": 1,
   "status": "integration-design-not-runtime-api",
   "diagram": "hybrid-idp-demo.architecture.json",
-  "diagram_sha256": "e12c969ef28817b92cb9eb978be93658cf6d817e48f21a3ca6ce0843cbadfde2",
+  "diagram_sha256": "053ff27d8e0fa660e3af2014523e5b03b43e1fce8cd4ffec55edb5d4b7061158",
   "nodes": {
-    "entra-id": "Entra ID",
-    "chat-ui": "Chat UI / エージェント",
-    "entra-oidc": "Kong：Entra認証",
-    "obo-acl": "Kong：OBO / Tool ACL",
-    "customer-api": "顧客API",
-    "test-ui": "Test UI ＋ Archify",
-    "adfs-oidc": "Kong：ADFS認証",
-    "legacy-authz": "カスタム認可",
-    "insurance-api": "保険業務 6 API",
+    "entra-id": "Microsoft Entra ID",
     "entra-ds": "Entra Domain Services",
     "adfs": "ADFS",
-    "authz-db": "PostgreSQL：認可マスタ"
+    "entra-oidc": "Entra系 Route",
+    "legacy-authz": "ADFS系 Route",
+    "authz-db": "PostgreSQL：認可マスタ",
+    "insurance-product": "insurance-product",
+    "insurance-simulation": "insurance-simulation",
+    "insurance-application": "insurance-application",
+    "insurance-customer": "insurance-customer",
+    "insurance-policy": "insurance-policy",
+    "insurance-claim": "insurance-claim"
   },
   "edges": {
-    "g1-entry": {
-      "from": "chat-ui",
-      "to": "entra-oidc",
-      "label": "ログイン"
-    },
-    "g1-mcp": {
-      "from": "entra-oidc",
-      "to": "obo-acl",
-      "label": "APIトークンを再提示"
-    },
-    "g1-allow": {
-      "from": "obo-acl",
-      "to": "customer-api",
-      "label": "許可Toolを実行"
-    },
     "g1-login": {
       "from": "entra-oidc",
       "to": "entra-id",
       "label": "OIDC"
     },
-    "g1-exchange": {
-      "from": "obo-acl",
-      "to": "entra-id",
-      "label": "OBO交換"
-    },
-    "g2-entry": {
-      "from": "test-ui",
-      "to": "adfs-oidc",
-      "label": "ログイン / API呼出"
-    },
-    "g2-claims": {
-      "from": "adfs-oidc",
-      "to": "legacy-authz",
-      "label": "検証済み属性"
-    },
-    "g2-allow": {
-      "from": "legacy-authz",
-      "to": "insurance-api",
-      "label": "許可時のみ"
-    },
     "g2-login": {
-      "from": "adfs-oidc",
+      "from": "legacy-authz",
       "to": "adfs",
       "label": "OIDC"
     },
@@ -71,7 +36,37 @@
     "g2-lookup": {
       "from": "legacy-authz",
       "to": "authz-db",
-      "label": "属性・API条件を照会"
+      "label": "マスタ照会"
+    },
+    "g1-product": {
+      "from": "entra-oidc",
+      "to": "insurance-product"
+    },
+    "g1-simulation": {
+      "from": "entra-oidc",
+      "to": "insurance-simulation"
+    },
+    "g1-application": {
+      "from": "entra-oidc",
+      "to": "insurance-application"
+    },
+    "g1-customer": {
+      "from": "entra-oidc",
+      "to": "insurance-customer",
+      "label": "/entra/customer/*"
+    },
+    "g2-customer": {
+      "from": "legacy-authz",
+      "to": "insurance-customer",
+      "label": "/adfs/customer/*"
+    },
+    "g2-policy": {
+      "from": "legacy-authz",
+      "to": "insurance-policy"
+    },
+    "g2-claim": {
+      "from": "legacy-authz",
+      "to": "insurance-claim"
     }
   },
   "state_vocabulary": [
@@ -85,8 +80,12 @@
   ],
   "notes": [
     "These are authored IDs, not a supported Archify event API.",
-    "Group 1 nodes combine multiple stages; correlate login, OBO and each Tool call separately.",
-    "Entra DS user synchronization is setup-time background context, not an event for every API request.",
-    "Do not infer an IdP page error or backend non-arrival from a browser timeout."
-  ]
+    "UI, OBO/MCP/LLM stages are omitted from this overview; do not infer their removal from the project.",
+    "The two Kong nodes combine authentication and authorization in ONE DP; correlate their runtime phases separately.",
+    "Revision 2 replaces aggregate API/UI nodes with six insurance API nodes. Regenerate mappings rather than retaining removed node IDs.",
+    "Customer ingress paths are illustrative proposals, not deployed configuration. Both target one backend.",
+    "Entra DS synchronization is setup-time context, not an API request event; tenant identity is not implied.",
+    "Do not infer IdP failure or backend non-arrival from a browser timeout."
+  ],
+  "diagram_revision": 2
 }

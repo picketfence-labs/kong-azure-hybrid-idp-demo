@@ -1,12 +1,12 @@
 {
   "diagram_type": "architecture",
   "specification": {
-    "sha256": "e12c969ef28817b92cb9eb978be93658cf6d817e48f21a3ca6ce0843cbadfde2",
-    "bytes": 6822
+    "sha256": "053ff27d8e0fa660e3af2014523e5b03b43e1fce8cd4ffec55edb5d4b7061158",
+    "bytes": 8855
   },
   "artifact": {
-    "sha256": "b1ab12a955eec47da8b54f56e8e9c6ea063b1c088ff95aac53624cab996dd598",
-    "bytes": 812814
+    "sha256": "a2194f09c13059fe3eaf313735c304143df05b7bf6fe1650ce1cc836834698de",
+    "bytes": 815059
   },
   "validation": {
     "checksPassed": 9,
@@ -30,5 +30,6 @@
   "visual_review": "passed",
   "correction_rounds": 2,
   "runtime_integration": "not_implemented",
-  "pages_url": "https://picketfence-labs.github.io/diagrams/5ecfdbb4c0e9/"
+  "pages_url": "https://picketfence-labs.github.io/diagrams/5ecfdbb4c0e9/",
+  "diagram_revision": 2
 }

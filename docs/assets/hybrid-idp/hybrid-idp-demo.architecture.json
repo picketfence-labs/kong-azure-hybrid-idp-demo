@@ -2,48 +2,67 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "ハイブリッドIdPデモ：目標構成",
+    "title": "ハイブリッドIdP：1 DP × 6 API",
     "quality_profile": "showcase",
     "viewBox": [
-      1190,
-      650
+      1390,
+      830
     ],
     "views": [
       {
-        "id": "group1",
-        "label": "Group 1：Entra ID",
+        "id": "entra-path",
+        "label": "① Entra：4 APIへ",
         "focus": [
-          "chat-ui",
-          "entra-oidc",
           "entra-id",
-          "obo-acl",
-          "customer-api"
+          "entra-oidc",
+          "insurance-product",
+          "insurance-simulation",
+          "insurance-application",
+          "insurance-customer"
         ],
-        "note": "既存のOBOとTool ACLを維持。ChatのLLM呼び出しは別経路。"
+        "note": "Entra IDのSecurity GroupでKongが認可。customerを含む4 APIへ到達します。矢印は許可時の経路です。"
       },
       {
-        "id": "group2",
-        "label": "Group 2：ADFS＋RDB",
+        "id": "adfs-path",
+        "label": "② ADFS：3 APIへ",
         "focus": [
-          "test-ui",
-          "adfs-oidc",
-          "adfs",
           "entra-ds",
+          "adfs",
           "legacy-authz",
           "authz-db",
-          "insurance-api"
+          "insurance-customer",
+          "insurance-policy",
+          "insurance-claim"
         ],
-        "note": "属性対応とAPI許可条件をPostgreSQLへ集約する目標設計。"
+        "note": "ADFSはOIDC認証。KongのカスタムプラグインがPostgreSQLの属性対応とAPI許可条件で認可します。"
       },
       {
-        "id": "decision",
-        "label": "認可の停止地点",
+        "id": "shared-customer",
+        "label": "③ customer：2 Path・1 API",
         "focus": [
+          "entra-oidc",
           "legacy-authz",
-          "authz-db",
-          "insurance-api"
+          "insurance-customer"
         ],
-        "note": "拒否・DB障害ならバックエンドを呼ばない。図の選択は実行結果ではない。"
+        "note": "/entra/customer/* と /adfs/customer/* は説明用のPath案。異なる認証・認可を経て同じinsurance-customerへ転送します。"
+      },
+      {
+        "id": "hosting",
+        "label": "④ 配置と責務の境界",
+        "focus": [
+          "entra-id",
+          "entra-ds",
+          "adfs",
+          "entra-oidc",
+          "legacy-authz",
+          "insurance-product",
+          "insurance-simulation",
+          "insurance-application",
+          "insurance-customer",
+          "insurance-policy",
+          "insurance-claim"
+        ],
+        "note": "Azureの認証基盤、1台のKong DP、Azure外の共通APIホストを区別。Kong内の2箱は別DPではなく処理系です。"
       }
     ]
   },
@@ -51,278 +70,328 @@
     {
       "id": "entra-id",
       "type": "security",
-      "label": "Entra ID",
-      "sublabel": "Group 1 / 別画面でログイン",
+      "label": "Microsoft Entra ID",
+      "sublabel": "Security Groupをクレームへ",
       "pos": [
-        340,
-        30
+        50,
+        210
       ],
       "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "chat-ui",
-      "type": "frontend",
-      "label": "Chat UI / エージェント",
-      "sublabel": "Group 1：既存機能を維持",
-      "pos": [
-        30,
-        190
-      ],
-      "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "entra-oidc",
-      "type": "security",
-      "label": "Kong：Entra認証",
-      "sublabel": "認可コード / セッション",
-      "pos": [
-        340,
-        190
-      ],
-      "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "obo-acl",
-      "type": "security",
-      "label": "Kong：OBO / Tool ACL",
-      "sublabel": "交換後のgroupsで認可",
-      "pos": [
-        650,
-        190
-      ],
-      "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "customer-api",
-      "type": "backend",
-      "label": "顧客API",
-      "sublabel": "照会 / 詳細：許可Toolのみ",
-      "pos": [
-        960,
-        190
-      ],
-      "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "test-ui",
-      "type": "frontend",
-      "label": "Test UI ＋ Archify",
-      "sublabel": "Group 2：経路・判定を表示",
-      "pos": [
-        30,
-        370
-      ],
-      "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "adfs-oidc",
-      "type": "security",
-      "label": "Kong：ADFS認証",
-      "sublabel": "OIDC / API Bearer検証",
-      "pos": [
-        340,
-        370
-      ],
-      "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "legacy-authz",
-      "type": "security",
-      "label": "カスタム認可",
-      "sublabel": "属性取得 → DB照会 → 判定",
-      "pos": [
-        650,
-        370
-      ],
-      "size": [
-        190,
-        68
-      ]
-    },
-    {
-      "id": "insurance-api",
-      "type": "backend",
-      "label": "保険業務 6 API",
-      "sublabel": "許可時のみ到達",
-      "pos": [
-        960,
-        370
-      ],
-      "size": [
-        190,
-        68
+        250,
+        80
       ]
     },
     {
       "id": "entra-ds",
       "type": "cloud",
       "label": "Entra Domain Services",
-      "sublabel": "Group 2のドメイン基盤",
+      "sublabel": "ADFSが参照するマネージドAD",
       "pos": [
-        30,
-        550
+        50,
+        410
       ],
       "size": [
-        190,
-        68
+        250,
+        80
       ]
     },
     {
       "id": "adfs",
       "type": "security",
       "label": "ADFS",
-      "sublabel": "Group 2 / 別画面でログイン",
+      "sublabel": "Azure VM上のOIDC IdP",
       "pos": [
-        340,
-        550
+        50,
+        565
       ],
       "size": [
-        190,
-        68
+        250,
+        80
       ]
+    },
+    {
+      "id": "entra-oidc",
+      "type": "security",
+      "label": "Entra系 Route",
+      "sublabel": "OIDC認証 ＋ Security Group認可",
+      "pos": [
+        480,
+        210
+      ],
+      "size": [
+        290,
+        90
+      ],
+      "tag": "同一DP内：標準プラグイン"
+    },
+    {
+      "id": "legacy-authz",
+      "type": "security",
+      "label": "ADFS系 Route",
+      "sublabel": "OIDC認証 ＋ カスタム認可",
+      "pos": [
+        480,
+        565
+      ],
+      "size": [
+        290,
+        90
+      ],
+      "tag": "同一DP内：簡潔なLuaロジック"
     },
     {
       "id": "authz-db",
       "type": "database",
       "label": "PostgreSQL：認可マスタ",
-      "sublabel": "属性対応 ＋ API許可条件",
+      "sublabel": "属性→グループ ＋ API許可条件",
       "pos": [
-        650,
+        480,
+        735
+      ],
+      "size": [
+        290,
+        70
+      ]
+    },
+    {
+      "id": "insurance-product",
+      "type": "backend",
+      "label": "insurance-product",
+      "sublabel": "商品 / Entraのみ",
+      "pos": [
+        1070,
+        90
+      ],
+      "size": [
+        270,
+        70
+      ]
+    },
+    {
+      "id": "insurance-simulation",
+      "type": "backend",
+      "label": "insurance-simulation",
+      "sublabel": "試算 / Entraのみ",
+      "pos": [
+        1070,
+        190
+      ],
+      "size": [
+        270,
+        70
+      ]
+    },
+    {
+      "id": "insurance-application",
+      "type": "backend",
+      "label": "insurance-application",
+      "sublabel": "申込 / Entraのみ",
+      "pos": [
+        1070,
+        290
+      ],
+      "size": [
+        270,
+        70
+      ]
+    },
+    {
+      "id": "insurance-customer",
+      "type": "backend",
+      "label": "insurance-customer",
+      "sublabel": "顧客 / Entra・ADFS共通",
+      "pos": [
+        1070,
+        415
+      ],
+      "size": [
+        270,
+        70
+      ]
+    },
+    {
+      "id": "insurance-policy",
+      "type": "backend",
+      "label": "insurance-policy",
+      "sublabel": "契約 / ADFSのみ",
+      "pos": [
+        1070,
         550
       ],
       "size": [
-        190,
-        68
+        270,
+        70
       ]
+    },
+    {
+      "id": "insurance-claim",
+      "type": "backend",
+      "label": "insurance-claim",
+      "sublabel": "保険金請求 / ADFSのみ",
+      "pos": [
+        1070,
+        650
+      ],
+      "size": [
+        270,
+        70
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Microsoft Azure｜認証基盤",
+      "wraps": [
+        "entra-id",
+        "entra-ds",
+        "adfs"
+      ],
+      "pad": 28
+    },
+    {
+      "kind": "security-group",
+      "label": "Kong Gateway｜1 Data Plane（共通）",
+      "wraps": [
+        "entra-oidc",
+        "legacy-authz"
+      ],
+      "pad": 28
+    },
+    {
+      "kind": "region",
+      "label": "共通APIホスティング｜Azure外・Kong外",
+      "wraps": [
+        "insurance-product",
+        "insurance-simulation",
+        "insurance-application",
+        "insurance-customer",
+        "insurance-policy",
+        "insurance-claim"
+      ],
+      "pad": 28
     }
   ],
   "connections": [
     {
-      "id": "g1-entry",
-      "from": "chat-ui",
-      "to": "entra-oidc",
-      "label": "ログイン",
-      "variant": "default"
-    },
-    {
-      "id": "g1-mcp",
-      "from": "entra-oidc",
-      "to": "obo-acl",
-      "label": "APIトークンを再提示",
-      "variant": "default"
-    },
-    {
-      "id": "g1-allow",
-      "from": "obo-acl",
-      "to": "customer-api",
-      "label": "許可Toolを実行",
-      "variant": "emphasis"
-    },
-    {
       "id": "g1-login",
       "from": "entra-oidc",
       "to": "entra-id",
-      "label": "OIDC",
-      "variant": "security"
-    },
-    {
-      "id": "g1-exchange",
-      "from": "obo-acl",
-      "to": "entra-id",
-      "label": "OBO交換",
       "variant": "security",
-      "fromSide": "top",
-      "toSide": "right"
-    },
-    {
-      "id": "g2-entry",
-      "from": "test-ui",
-      "to": "adfs-oidc",
-      "label": "ログイン / API呼出",
-      "variant": "default"
-    },
-    {
-      "id": "g2-claims",
-      "from": "adfs-oidc",
-      "to": "legacy-authz",
-      "label": "検証済み属性",
-      "variant": "default"
-    },
-    {
-      "id": "g2-allow",
-      "from": "legacy-authz",
-      "to": "insurance-api",
-      "label": "許可時のみ",
-      "variant": "emphasis"
+      "fromSide": "left",
+      "toSide": "right",
+      "label": "OIDC"
     },
     {
       "id": "g2-login",
-      "from": "adfs-oidc",
+      "from": "legacy-authz",
       "to": "adfs",
-      "label": "OIDC",
       "variant": "security",
-      "labelDy": 84
+      "fromSide": "left",
+      "toSide": "right",
+      "label": "OIDC"
     },
     {
       "id": "g2-directory",
       "from": "adfs",
       "to": "entra-ds",
-      "label": "ドメイン認証",
-      "variant": "security"
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "label": "ドメイン認証"
     },
     {
       "id": "g2-lookup",
       "from": "legacy-authz",
       "to": "authz-db",
-      "label": "属性・API条件を照会",
       "variant": "default",
-      "labelDy": 84
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "マスタ照会",
+      "labelDy": 60
+    },
+    {
+      "id": "g1-product",
+      "from": "entra-oidc",
+      "to": "insurance-product",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "g1-simulation",
+      "from": "entra-oidc",
+      "to": "insurance-simulation",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "g1-application",
+      "from": "entra-oidc",
+      "to": "insurance-application",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "g1-customer",
+      "from": "entra-oidc",
+      "to": "insurance-customer",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "/entra/customer/*"
+    },
+    {
+      "id": "g2-customer",
+      "from": "legacy-authz",
+      "to": "insurance-customer",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "/adfs/customer/*"
+    },
+    {
+      "id": "g2-policy",
+      "from": "legacy-authz",
+      "to": "insurance-policy",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "g2-claim",
+      "from": "legacy-authz",
+      "to": "insurance-claim",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "図は設計、実測ではありません",
+      "title": "Test UI → 別画面でIdPログイン",
       "items": [
-        "UI実イベントとの連動は開発側で実装。",
-        "選択・経路表示は構成説明のための操作です。"
+        "図の画面を維持し、対象Pathで認証先を固定。",
+        "セッション再利用時はIdPへの再遷移を省略。"
       ]
     },
     {
       "dot": "emerald",
-      "title": "認証先はサービスで固定",
+      "title": "6 APIは同じホスティング領域",
       "items": [
-        "ログインは別画面。図を表示した画面は維持。",
-        "有効なセッション利用時はIdPへ再遷移しません。"
+        "customerだけ2つの入口を持つ単一API。",
+        "全APIはKong外・Azure外。認可後に転送。"
       ]
     },
     {
       "dot": "amber",
-      "title": "デモの観測と範囲",
+      "title": "目標構成・実イベント連動は未実装",
       "items": [
-        "入力属性・照合条件・結果を表示。未確認は未確認。",
-        "Entra DS同期は事前処理。LLM経路は本図の範囲外。"
+        "属性・照合条件・結果を表示。不明は不明。",
+        "OBO/MCP/LLMの詳細とUIノードは本図で省略。"
       ]
     }
   ]
