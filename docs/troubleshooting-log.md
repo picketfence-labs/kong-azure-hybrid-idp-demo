@@ -63,3 +63,8 @@
 - **PR更新の症状**: `gh pr edit 9 --body-file ...`が`repository.pullRequest.projectCards`の旧Projects GraphQLエラーで失敗した。
 - **対処**: 同じ本文をGitHub REST `PATCH /repos/picketfence-labs/kong-azure-hybrid-idp-demo/pulls/9`で更新して成功。CLI更新、権限設定変更、PR mergeはしていない。
 - **補足**: 作業環境に`rg`が無かったため、限定ファイルをread/Pythonで確認した。runtime実装/E2Eの成功証拠とは分ける。
+
+## 2026-09-14 Archify改訂3: UIの説明欠落を修復
+- **症状**: 改訂2で構成境界と6 APIを優先した結果、UIを図から省略し、利用者から認可コードフローの開始点が説明できないと指摘を受けた。
+- **対処**: 共通Test UIをKong外へ復元し、両Route入口とブラウザ経由のIdP redirect/callbackを追加。callbackとserver-side token交換を区別。6 APIの経路分担・1 DP・Azure/API境界は維持。
+- **検証**: ラベル重なり修正後、目視で往復線の重複を検出し復路を分離。最終showcase 9/9・4画面サイズ・明暗表示・正規PNG/SVGを確認。アプリ実装や認証E2Eは未実施。

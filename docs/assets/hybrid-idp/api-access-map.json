@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "target-requirements-not-deployed-config",
-  "diagram_revision": 2,
+  "diagram_revision": 3,
   "gateway_data_planes": 1,
   "hosting": {
     "apis": "one shared hosting environment outside both Azure and Kong",

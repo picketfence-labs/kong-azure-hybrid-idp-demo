@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "integration-design-not-runtime-api",
   "diagram": "hybrid-idp-demo.architecture.json",
-  "diagram_sha256": "053ff27d8e0fa660e3af2014523e5b03b43e1fce8cd4ffec55edb5d4b7061158",
+  "diagram_sha256": "317312865327da93c9cc74747b800725c7bd8ff4d1f02ecadc13e12c938e55f6",
   "nodes": {
     "entra-id": "Microsoft Entra ID",
     "entra-ds": "Entra Domain Services",
@@ -15,18 +15,19 @@
     "insurance-application": "insurance-application",
     "insurance-customer": "insurance-customer",
     "insurance-policy": "insurance-policy",
-    "insurance-claim": "insurance-claim"
+    "insurance-claim": "insurance-claim",
+    "test-ui": "Test UI ＋ Archify"
   },
   "edges": {
     "g1-login": {
       "from": "entra-oidc",
       "to": "entra-id",
-      "label": "OIDC"
+      "label": "② 別画面でIdPへ"
     },
     "g2-login": {
       "from": "legacy-authz",
       "to": "adfs",
-      "label": "OIDC"
+      "label": "② 別画面でIdPへ"
     },
     "g2-directory": {
       "from": "adfs",
@@ -67,6 +68,26 @@
     "g2-claim": {
       "from": "legacy-authz",
       "to": "insurance-claim"
+    },
+    "g1-entry": {
+      "from": "test-ui",
+      "to": "entra-oidc",
+      "label": "① Entra系を選択"
+    },
+    "g2-entry": {
+      "from": "test-ui",
+      "to": "legacy-authz",
+      "label": "① ADFS系を選択"
+    },
+    "g1-callback": {
+      "from": "entra-id",
+      "to": "entra-oidc",
+      "label": "③ code / callback"
+    },
+    "g2-callback": {
+      "from": "adfs",
+      "to": "legacy-authz",
+      "label": "③ code / callback"
     }
   },
   "state_vocabulary": [
@@ -80,12 +101,14 @@
   ],
   "notes": [
     "These are authored IDs, not a supported Archify event API.",
-    "UI, OBO/MCP/LLM stages are omitted from this overview; do not infer their removal from the project.",
     "The two Kong nodes combine authentication and authorization in ONE DP; correlate their runtime phases separately.",
-    "Revision 2 replaces aggregate API/UI nodes with six insurance API nodes. Regenerate mappings rather than retaining removed node IDs.",
     "Customer ingress paths are illustrative proposals, not deployed configuration. Both target one backend.",
     "Entra DS synchronization is setup-time context, not an API request event; tenant identity is not implied.",
-    "Do not infer IdP failure or backend non-arrival from a browser timeout."
+    "Do not infer IdP failure or backend non-arrival from a browser timeout.",
+    "Revision 3 restores one shared test-ui node, g1-entry/g2-entry and adds g1-callback/g2-callback.",
+    "g1-login/g2-login and callbacks represent front-channel redirects THROUGH THE SEPARATE BROWSER WINDOW, not direct IdP-to-Kong server callbacks.",
+    "Authorization code return precedes server-side token exchange/validation and authorization; these runtime stages must be observed separately.",
+    "OBO/MCP/LLM details remain omitted from the overview, not removed from project scope."
   ],
-  "diagram_revision": 2
+  "diagram_revision": 3
 }

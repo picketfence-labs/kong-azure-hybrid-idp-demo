@@ -13,6 +13,7 @@
         "id": "entra-path",
         "label": "① Entra：4 APIへ",
         "focus": [
+          "test-ui",
           "entra-id",
           "entra-oidc",
           "insurance-product",
@@ -20,12 +21,13 @@
           "insurance-application",
           "insurance-customer"
         ],
-        "note": "Entra IDのSecurity GroupでKongが認可。customerを含む4 APIへ到達します。矢印は許可時の経路です。"
+        "note": "①UIでEntra系APIを選択 → ②未認証なら別画面でEntra IDへ → ③code付きcallbackをKongへ。Kongがトークン交換・検証と認可を行いAPIへ転送。"
       },
       {
         "id": "adfs-path",
         "label": "② ADFS：3 APIへ",
         "focus": [
+          "test-ui",
           "entra-ds",
           "adfs",
           "legacy-authz",
@@ -34,7 +36,7 @@
           "insurance-policy",
           "insurance-claim"
         ],
-        "note": "ADFSはOIDC認証。KongのカスタムプラグインがPostgreSQLの属性対応とAPI許可条件で認可します。"
+        "note": "①UIでADFS系APIを選択 → ②未認証なら別画面でADFSへ → ③code付きcallbackをKongへ。トークン検証後、PostgreSQLマスタでカスタム認可。"
       },
       {
         "id": "shared-customer",
@@ -50,6 +52,7 @@
         "id": "hosting",
         "label": "④ 配置と責務の境界",
         "focus": [
+          "test-ui",
           "entra-id",
           "entra-ds",
           "adfs",
@@ -115,11 +118,11 @@
       "label": "Entra系 Route",
       "sublabel": "OIDC認証 ＋ Security Group認可",
       "pos": [
-        480,
+        650,
         210
       ],
       "size": [
-        290,
+        270,
         90
       ],
       "tag": "同一DP内：標準プラグイン"
@@ -130,11 +133,11 @@
       "label": "ADFS系 Route",
       "sublabel": "OIDC認証 ＋ カスタム認可",
       "pos": [
-        480,
+        650,
         565
       ],
       "size": [
-        290,
+        270,
         90
       ],
       "tag": "同一DP内：簡潔なLuaロジック"
@@ -145,11 +148,11 @@
       "label": "PostgreSQL：認可マスタ",
       "sublabel": "属性→グループ ＋ API許可条件",
       "pos": [
-        480,
+        650,
         735
       ],
       "size": [
-        290,
+        270,
         70
       ]
     },
@@ -236,6 +239,21 @@
         270,
         70
       ]
+    },
+    {
+      "id": "test-ui",
+      "type": "frontend",
+      "label": "Test UI ＋ Archify",
+      "sublabel": "1つのUIから対象APIを選択",
+      "tag": "図の画面は維持／IdPは別画面",
+      "pos": [
+        350,
+        365
+      ],
+      "size": [
+        240,
+        95
+      ]
     }
   ],
   "boundaries": [
@@ -280,7 +298,11 @@
       "variant": "security",
       "fromSide": "left",
       "toSide": "right",
-      "label": "OIDC"
+      "label": "② 別画面でIdPへ",
+      "labelAt": [
+        470,
+        225
+      ]
     },
     {
       "id": "g2-login",
@@ -289,7 +311,11 @@
       "variant": "security",
       "fromSide": "left",
       "toSide": "right",
-      "label": "OIDC"
+      "label": "② 別画面でIdPへ",
+      "labelAt": [
+        470,
+        580
+      ]
     },
     {
       "id": "g2-directory",
@@ -367,31 +393,109 @@
       "variant": "emphasis",
       "fromSide": "right",
       "toSide": "left"
+    },
+    {
+      "id": "g1-entry",
+      "from": "test-ui",
+      "to": "entra-oidc",
+      "label": "① Entra系を選択",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "g2-entry",
+      "from": "test-ui",
+      "to": "legacy-authz",
+      "label": "① ADFS系を選択",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "g1-callback",
+      "from": "entra-id",
+      "to": "entra-oidc",
+      "label": "③ code / callback",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [
+        470,
+        337
+      ],
+      "via": [
+        [
+          360,
+          250
+        ],
+        [
+          360,
+          320
+        ],
+        [
+          590,
+          320
+        ],
+        [
+          590,
+          255
+        ]
+      ]
+    },
+    {
+      "id": "g2-callback",
+      "from": "adfs",
+      "to": "legacy-authz",
+      "label": "③ code / callback",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [
+        470,
+        699
+      ],
+      "via": [
+        [
+          360,
+          605
+        ],
+        [
+          360,
+          680
+        ],
+        [
+          590,
+          680
+        ],
+        [
+          590,
+          610
+        ]
+      ]
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Test UI → 別画面でIdPログイン",
+      "title": "① UI → ② IdP → ③ callback",
       "items": [
-        "図の画面を維持し、対象Pathで認証先を固定。",
-        "セッション再利用時はIdPへの再遷移を省略。"
+        "②③は別画面ブラウザ経由のOIDC認可コードフロー。",
+        "図の画面を維持。有効セッション時は②③を省略。"
       ]
     },
     {
       "dot": "emerald",
-      "title": "6 APIは同じホスティング領域",
+      "title": "Kongで交換・検証 → 認可 → API",
       "items": [
-        "customerだけ2つの入口を持つ単一API。",
-        "全APIはKong外・Azure外。認可後に転送。"
+        "codeとtokenは別物。token交換はKong→IdP。",
+        "customerはPath別の入口から同一APIへ転送。"
       ]
     },
     {
       "dot": "amber",
       "title": "目標構成・実イベント連動は未実装",
       "items": [
-        "属性・照合条件・結果を表示。不明は不明。",
-        "OBO/MCP/LLMの詳細とUIノードは本図で省略。"
+        "UI/IdPはKong外。APIは共通ホスト（Azure外）。",
+        "OBO/MCP/LLMの詳細のみ省略。不明は不明。"
       ]
     }
   ]

@@ -45,7 +45,7 @@ SVGファイルが同梱されている場合はArchifyの標準Exportから書�
 
 customerの `/entra/customer/*` と `/adfs/customer/*` は**説明用のPath案**。同じ `insurance-customer` バックエンドを指し、APIコンテナを2つに増やす意味ではありません。正式Path、prefix除去/書き換え、HTTP method、issuerとセッションの経路間分離は設計更新時に確定します。
 
-OIDC線は論理的連携であり、IdPがAPIを直接呼ぶことや全HTTP往復を表しません。Test UIは図の下の説明カードにまとめ、別画面ログインを維持。OBO/MCP/LLMの詳細は本図では省略し、既存機能を削除する意図はありません。Entra DSへの同期は事前準備です。図のEntra IDとEntra DSの元テナントが同一であるとは断定しません。
+①はUIから対象Pathへの要求、②は未認証時にKongが返すリダイレクトにブラウザが従ってIdPへ進む処理、③はIdP認証後に別画面ブラウザが認可コード付きでKong callbackへ戻る処理です。②③の線はブラウザ経由の論理経路であり、サーバー同士のリダイレクトやIdPからKongへの直接通知ではありません。callback後のcode→token交換・token検証はKongが行い、認可後にAPIへ転送します。有効なセッションの再利用時は②③を省略します。**改訂3では共通のTest UIノードを復元**し、Entra系とADFS系Routeへ明示接続。図の画面を維持し、IdPログインだけ別画面で行います。OBO/MCP/LLMの詳細は本図では省略し、既存機能を削除する意図はありません。Entra DSへの同期は事前準備です。図のEntra IDとEntra DSの元テナントが同一であるとは断定しません。
 
 章選択、focus、path、theme、exportは構成説明のViewer操作です。自動実トレースではありません。固定Viewer UIとHTML langはArchifyの英語fallback、図の本文は日本語です。
 
@@ -64,4 +64,4 @@ OIDC線は論理的連携であり、IdPがAPIを直接呼ぶことや全HTTP往
 
 Archify showcase validate/deliver: 9/9、0 errors、0 warnings。Chrome visual-check: 4画面サイズでcontainment合格、1440×900/2048×1320のlight/darkをcapture。PNGの目視でも重なり・切れ・大きな余白の問題なし。
 
-改訂2ではDB照会ラベルの重なりとviewBox幅による文字サイズ不足を2回の修正で解消。再生成はArchify 2.17の`validate architecture`、`deliver architecture`、`visual-check`を使用し、同じ品質ゲートを通すこと。
+改訂3ではredirect/callbackラベルのノード重なりを修正し、目視で重なって見えた往路/復路を別ルートに分離（修正2回）。再生成はArchify 2.17の`validate architecture`、`deliver architecture`、`visual-check`を使用し、同じ品質ゲートを通すこと。
