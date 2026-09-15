@@ -126,6 +126,18 @@ services:
               scopes:
                 - openid
                 - profile
+                - allatclaims
+                - user_impersonation
+              # ADFSがWeb APIのcustom claimをID tokenへ含めるallatclaimsにはform_postが必要。
+              response_mode: form_post
+              # 別siteのADFSからPOSTされるcallbackでもstate Cookieを送る。
+              # Secure Cookieは対象デモoriginがlocalhostのためHTTPでも利用できる。
+              authorization_cookie_same_site: None
+              authorization_cookie_secure: true
+              authorization_query_args_names:
+                - resource
+              authorization_query_args_values:
+                - "${{ env "DECK_ADFS_RESOURCE" }}"
               redirect_uri:
                 - "http://localhost:8000/adfs/auth/callback"
               login_action: redirect

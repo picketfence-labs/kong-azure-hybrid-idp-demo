@@ -22,23 +22,69 @@ VM作成・ドメイン参加までと、ADFSサービス設定の完了を別�
 
 ## 2. ADFSサービス、証明書、名前解決
 
-1. 許可した管理端末からVMへ接続し、対象Windows Server版の手順でADFSロールを設定する。
-2. ADFS用FQDNに一致する証明書を用意する。ブラウザとKongコンテナの両方が信頼できるchainを設定する。検証回避を既定にしない。
-3. デモで自己署名証明書を使う場合は限定例外として承認し、両クライアントのtrust storeを準備する。`tls_verify=false`やブラウザ警告の無視だけで合格にしない。
-4. ADFSファーム/サービスアカウントは対象環境に合わせて設定する。既存ファームの上書きやdomain adminの常用を自動前提にしない。
-5. FQDNがブラウザ端末と**Kongコンテナ内部**から解決することを確認する。ホストOSのhosts編集だけではコンテナDNSの成功証拠にならない。
+[ADR-0004](decisions/0004-adfs-farm-identity-and-tls.md)で、専用FQDN、自己署名証明書、gMSAを採択しました。自己署名証明書はこのデモだけで信頼します。`tls_verify=false`やブラウザ警告の無視は使いません。
 
-正確なPowerShell引数、サービスアカウント方式、証明書配備は実機条件で確認して記録します。旧ドラフトの`OverwriteConfiguration`を無条件に再実行しないでください。
+1. `terraform output`からADFS VMのPublic IP、ドメイン管理者UPN、パスワードを安全に取得する。パスワードを画面、シェル履歴、文書へ貼らない。
+2. 許可した管理端末からVMへRDP接続する。`adfs-domain-admin`でサインインし、管理者としてWindows PowerShell 5.1を開く。ローカル管理者は復旧時だけ使う。
+3. レビュー済みcommitの`scripts/adfs/`をVMの`C:\KongDemo\adfs`へコピーする。署名されていない別ファイルへ置き換えない。
+4. 変更前のpreflightを実行する。
+
+   ```powershell
+   Set-Location C:\KongDemo\adfs
+   .\Configure-AdfsDemoFarm.ps1
+   ```
+
+5. 出力が次の値と一致することを確認する。
+
+   | 項目 | 期待値 |
+   |---|---|
+   | Domain | `adfsdemo.picketfencelabs.local` |
+   | Computer FQDN | `vm-adfs-demo.adfsdemo.picketfencelabs.local` |
+   | Federation Service name | `adfs.adfsdemo.picketfencelabs.local` |
+   | Server IPv4 | Terraform管理下のADFS VM内部IP |
+   | AD FS role | 初回は`Available` |
+
+6. 値を確認してから、ADFSロール、DNS Aレコード、gMSA、証明書、ファームを作成する。
+
+   ```powershell
+   .\Configure-AdfsDemoFarm.ps1 -Apply
+   ```
+
+   スクリプトは`OverwriteConfiguration`を使いません。既存ADFSサービス、別IPの同名DNSレコード、別所有者のSPNを検出した場合は停止します。
+
+7. VM上の`C:\ProgramData\KongDemo\adfs-demo-root.cer`を管理端末へコピーする。秘密鍵を含むPFXはエクスポートしない。
+8. 管理端末とKongコンテナのtrust storeへ公開証明書を登録する。デモ終了時に削除できるよう、thumbprintと登録先だけを記録する。
+9. `adfs.adfsdemo.picketfencelabs.local`を、管理端末とKongコンテナの両方からADFS VMのPublic IPへ解決させる。コンテナ側は後続のCompose設定で検証し、ホストOSの設定だけで完了扱いにしない。
 
 ## 3. Application GroupとAPI資源
 
 Microsoftの[Server application accessing a Web API](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/development/msal/adfs-msal-web-app-web-api)構成を参考に、**Server application（Kongのclient）とWeb API（resource/audience）を分けて**登録します。SAML用Relying Party設定と混同しないでください。
 
-1. Application Groupを作成し、Server applicationのclient ID/資格情報とWeb API identifierを記録する。secretは安全な保管先へ保存する。
-2. `DEMO_ORIGIN/adfs/auth/callback`を完全一致で登録する。旧`/insurance/login/callback`はP1で置き換えたため登録しない。
-3. 必要なscope/resource/audienceと、対象デモユーザーだけに許可するADFS側policyを確認する。公式サンプルの全員許可を本デモへ無条件コピーしない。
-4. Web API側のclaim規則と、どのtokenへ必要属性が出るかを確認する。Server applicationに全claim規則があると仮定しない。
-5. Entra系の新しい保険API用設定は別のclient/resource/必要権限として整理する。既存Chat/OBOのclient/audienceを黙って変更しない。
+1. 変更前のpreflightを実行する。
+
+   ```powershell
+   .\Register-KongDemoApplication.ps1
+   ```
+
+2. client ID、Web API identifier、callback、claim名、scopeを確認する。callbackは`http://localhost:8000/adfs/auth/callback`だけを登録する。旧`/insurance/login/callback`は登録しない。Kong側は`allatclaims`の要件に合わせて`response_mode=form_post`を使い、認可中Cookieを`SameSite=None; Secure`にする。
+3. Application Group、Server application、Web API、permissionを作成する。
+
+   ```powershell
+   .\Register-KongDemoApplication.ps1 -Apply
+   ```
+
+4. スクリプトがクリップボードへ置いたclient secretを、管理端末の非追跡`.env`または承認済みsecret storeへ直ちに保存する。チャット、文書、画像、PR、コマンド引数へ貼らない。VM上のバックアップは現在のWindowsユーザーだけが復号できるDPAPI形式で保存される。
+5. 次の非秘密値をKong環境へ設定する。
+
+   ```dotenv
+   DECK_ADFS_ISSUER=https://adfs.adfsdemo.picketfencelabs.local/adfs
+   DECK_ADFS_CLIENT_ID=5923191c-da9f-4c23-ac6f-dd7be8b5b93a
+   DECK_ADFS_RESOURCE=urn:kong:insurance-api
+   DECK_ADFS_GROUP_CLAIM_NAME=https://picketfencelabs.local/claims/department
+   ```
+
+   `DECK_ADFS_CLIENT_SECRET`には保存したsecretを設定する。スクリプトは全員許可を使わず、P1で現在設定されている5つの小文字`department`値だけを許可する。後続のDB認可実装で`D-IT`等へ移行する際は、ADFSの許可値も同じPRで更新する。
+6. Entra系の新しい保険API用設定は別のclient/resource/必要権限として扱う。既存Chat/OBOのclient/audienceを変更しない。
 
 ## 4. 属性同期・claim・tokenの検証
 
@@ -49,6 +95,14 @@ Microsoftの[Server application accessing a Web API](https://learn.microsoft.com
 - [ ] issuer、audience、署名、期限、scope、claim名・型・値の所在をID token/access tokenで分けて確認する。raw tokenは保存せず、値をマスクした結果だけ記録する。
 - [ ] API側が必要とするaccess tokenを取得・検証できる。ID tokenをBearerとして流用しない。
 - [ ] OIDC後のカスタムPluginが本当に検証済み属性を読むことを、G2の偽造Header負例で証明する。
+
+ADFSファームとApplication Groupの静的状態はVM上で確認します。
+
+```powershell
+.\Test-AdfsDemo.ps1
+```
+
+このスクリプトはrole、service、DNS、TLS binding、gMSA、SPN、discovery、Application Group、permission、5ユーザーの`department`を確認します。raw tokenは取得も保存もしません。ID tokenとaccess tokenのclaim検証は、Kongを起動した後のブラウザ試験で別途行います。
 
 同期やclaim発行に失敗したらgateをblockedにし、別属性へ変える案をADRでレビューします。ADFSで`D-IT → it`へ変換してDB照会の要件を消さないでください。
 
