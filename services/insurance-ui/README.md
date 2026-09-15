@@ -1,7 +1,44 @@
-# Group 2専用UI（insurance-ui）
+# 共通保険デモUI（insurance-ui）
 
-Kong Gateway ADFS/OIDC × レガシー認可ロジック再現デモのGroup 2専用UI。詳細はリポジトリルートの[README.md](../../README.md)の「Group 2専用UI（insurance-ui）」節を参照。
+`insurance-ui`は、Entra ID経路とADFS経路の認証状態を同じ画面で確認するNext.jsアプリです。`/insurance/`のshellは未認証でも表示されます。OAuthクライアントとセッション検証は、[`kong/insurance-ui-route.yaml`](../../kong/insurance-ui-route.yaml)のOpenID Connect pluginが担当します。
 
-このアプリ自身はOAuthクライアントを持たない。ログイン・セッション管理は[`kong/insurance-ui-route.yaml`](../../kong/insurance-ui-route.yaml)のopenid-connectプラグインが担い、Next.jsはKongが転送するヘッダー（グループID・アクセストークン）を信頼するだけの構成（[`services/chat-ui`](../chat-ui)と同じ方針、詳細は[docs/design-brief.md](../../docs/design-brief.md) Group 2「3. アーキテクチャ」）。単体（`bun run dev`、http://localhost:3000）で開いても認証ヘッダーが無いため、Kong経由（http://localhost:8000/insurance/、`docker compose up -d`）でのアクセスが前提。
+## 現在のPoC範囲
 
-Kong上で`/`（Chat UI）と共存させるため`/insurance`配下にマウントしている（`next.config.ts`の`basePath`参照）。
+- `/entra/auth/start`と`/adfs/auth/start`を別画面で開く
+- `insurance_entra_session`と`insurance_adfs_session`を別Cookie Pathで管理する
+- `/entra/auth/status`と`/adfs/auth/status`から、認証状態と検証済み属性の有無だけを取得する
+- `/adfs/auth/probe`で、OIDCが検証したscalar属性を既存`legacy-authz-adapter`へ渡す
+- `postMessage`を状態再確認の通知にだけ使い、認証成功の根拠にしない
+- 対応する経路だけをログアウトする
+
+API認可、PostgreSQLマスタ、実行履歴、図のイベント連動は後続gateで実装します。削除済みの`api/access-check`によるBearer token relayは使いません。
+
+## ローカルで検証する
+
+依存関係をインストールします。
+
+```bash
+bun install --frozen-lockfile
+```
+
+単体テスト、型検査、lintを実行します。
+
+```bash
+bun test
+```
+
+```bash
+bun x tsc --noEmit
+```
+
+```bash
+bun run lint
+```
+
+production buildを実行します。このリポジトリで使うNext.js 16.3.4のTurbopack buildが実行環境のlocalhost port制限を受ける場合は、webpack経路でコードと生成物を検証します。
+
+```bash
+./node_modules/.bin/next build --webpack
+```
+
+アプリ単体ではKongのセッション検証を再現できません。実IdP、Cookie分離、Header偽造の負例は、GatewayとIdPを準備してKong経由で確認します。probeでは`DECK_ADFS_POC_ATTRIBUTE_VALUE`に対象ユーザーの期待属性値を指定します。この値はPoC専用で、後続のPostgreSQL認可マスタを代替しません。

@@ -49,7 +49,20 @@ UIにOAuthクライアントを重複実装せず、Kongの認可コードフロ
 
 ## 想定していたこと vs 実際どうだったか
 
-未実装・PoC未実施。`authz.lua`はDB未参照、`handler.lua`はHeaderを読み、現行UIはBearer relay＋`response.ok`判定。新方式へ適合する証拠はない。
+### 2026-09-15 G1/G2の試験構成
+
+次の構成を実装し、実Gatewayへ接続しない範囲で検証した。G1/G2の合格と最終採用はまだ記録しない。
+
+- `/insurance/`を匿名shellにし、Entra IDとADFSのlogin、callback、status、logout Routeを分けた。
+- IdPごとにsession secret、audience、Cookie name、Cookie Pathを分けた。既存Chat sessionは変更していない。
+- OpenID Connect pluginの`login_tokens`を空にし、認証完了redirectへtokenを含めない。`postMessage`は再確認通知だけに使う。
+- status Routeは、認証状態と検証済み属性の有無だけを返す。旧Bearer token relayは削除した。
+- `/adfs/auth/probe`だけに既存`legacy-authz-adapter`を接続した。期待するscalar属性値をPoC用環境変数で1件指定し、後続の認可DBや6 APIの設定とは分離した。
+- UI単体テスト8件、TypeScript、ESLint、webpack production build、Compose構文検証、今回のstate単体と既存stateを含む全10ファイルの`deck file validate`が成功した。
+
+対象imageのlabelとローカルimage IDを確認し、source revisionを`7d95f6d021d05405e4c47244049ad21d64619201`へ固定した。そのrevisionのOpenID Connect pluginは、`upstream_headers`で指定したrequest Headerを先に削除し、検証済みtokenまたはuserinfoのclaimが存在する場合だけ値を設定する。OpenID Connect pluginの優先度1050は現行`legacy-authz-adapter`の100より高い。この実装順序から、外部の同名Headerを下位pluginがそのまま信頼する経路は作らない構成になっている。
+
+残る証拠は実Gateway上の負例です。外部から`X-Demo-Verified-Attribute`を指定した未認証要求が401になり、claim欠落時に同HeaderがUpstreamや下位pluginへ残らず、正常tokenのclaimだけが渡ることを確認する。両IdPの同時sessionと片方だけのlogoutも実IdPで確認する。
 
 ## 影響・トレードオフ
 

@@ -133,16 +133,19 @@ bun install
 bun run dev   # http://localhost:3000 単体では認証ヘッダーが無いため、Kong経由（http://localhost:8000）でのアクセスが前提
 ```
 
-### 旧Group 2専用UI（現行コード参照用、再開時は置換対象）
+### 共通保険デモUIのG1/G2 PoC
 
-> 以下は旧構成です。新要件のセットアップとして実行せず、[開発再開手順](docs/development-handoff.md)と[runbook](docs/adfs-setup-runbook.md)に従ってください。
+`services/insurance-ui`（Next.js App Router）は、未認証でも表示できる`/insurance/`のshellからEntra IDとADFSを別画面で認証します。アプリ自身はOAuthクライアントを持ちません。`kong/insurance-ui-route.yaml`のOpenID Connect pluginが、IdPごとに分離した認可コードフローとsessionを処理します。
 
-`services/insurance-ui`（Next.js App Router）。design-brief Group2「3. アーキテクチャ」の通り、Chat UIと同じ方針でOAuthクライアント実装を持たず、`kong/insurance-ui-route.yaml`のopenid-connectプラグイン（ADFS向け、認可コードフロー＋セッション、OBOなし）が認証・ログアウトを担う。Next.js側はKongが転送するヘッダーを信頼するだけ:
+- Entra ID: `/entra/auth/start`、`/entra/auth/callback`、`/entra/auth/status`、`/entra/auth/logout`
+- ADFS: `/adfs/auth/start`、`/adfs/auth/callback`、`/adfs/auth/status`、`/adfs/auth/logout`
+- G2 probe: `/adfs/auth/probe`で、検証済みscalar属性を既存`legacy-authz-adapter`へ渡す
+- Cookie: `insurance_entra_session`は`/entra`、`insurance_adfs_session`は`/adfs`に限定する
+- status応答: 認証済みか、OpenID Connect pluginが転送した検証済み属性が存在するかだけを返す
 
-- `X-ADFS-Group-Claim`: ADFSが発行したIDトークンのクレーム（design-brief通り属性値=グループID）。画面上部に「ログイン中: グループ `<id>`」として表示する
-- `Authorization: Bearer <access_token>`: insurance-uiログインで取得したアクセストークン。`src/app/api/access-check/route.ts`がこれを各バックエンドRoute（`kong/insurance-<service>.yaml`、`auth_methods: bearer`）へそのまま再提示し、`legacy-authz-adapter`による許可/拒否をKong経由で確認する（OBOは行わない点のみGroup 1と異なる）
+認証完了ページはcodeやtokenを親画面へ渡しません。親画面へ再確認を通知し、親画面が対応するstatus Routeを呼びます。旧`api/access-check`のBearer token relayは削除しました。API認可、PostgreSQLマスタ、実行履歴、図連動は後続gateの対象です。
 
-Kong上で`kong/login-route.yaml`（`/`）と共存させるため、`/insurance`配下にマウントしている（`services/insurance-ui/next.config.ts`の`basePath`、`kong/insurance-ui-route.yaml`の`strip_path: false`）。
+Kong上で`kong/login-route.yaml`（`/`）と共存させるため、UIは`/insurance`配下にマウントします（`services/insurance-ui/next.config.ts`の`basePath`、`kong/insurance-ui-route.yaml`の`strip_path: false`）。
 
 ローカル起動（Docker Composeを使わない場合）:
 ```bash
@@ -151,7 +154,7 @@ bun install
 bun run dev   # http://localhost:3000 単体では認証ヘッダーが無いため、Kong経由（http://localhost:8000/insurance/）でのアクセスが前提
 ```
 
-Kong側への反映（`kong/insurance-ui-route.yaml`・`kong/insurance-<service>.yaml`）は、ADFS実インフラ（下記「ADFS/Entra Domain Servicesインフラ」）が発行する`DECK_ADFS_ISSUER`/`DECK_ADFS_CLIENT_ID`/`DECK_ADFS_CLIENT_SECRET`/`DECK_ADFS_GROUP_CLAIM_NAME`と、decK専用の`DECK_ADFS_SESSION_SECRET`（`openssl rand -base64 32`等で生成、Terraform outputではない）が揃ってから行う。
+Kong側への反映はまだ行っていません。P1の実機検証では、Entra ID用の`DECK_ENTRA_ISSUER`、`DECK_MIDDLE_TIER_CLIENT_ID`、`DECK_MIDDLE_TIER_CLIENT_SECRET`、`DECK_ENTRA_INSURANCE_SESSION_SECRET`と、ADFS用の`DECK_ADFS_ISSUER`、`DECK_ADFS_CLIENT_ID`、`DECK_ADFS_CLIENT_SECRET`、`DECK_ADFS_GROUP_CLAIM_NAME`、`DECK_ADFS_SESSION_SECRET`、`DECK_ADFS_POC_ATTRIBUTE_VALUE`を用意します。session secretはTerraform outputに含めず、IdP間で共有しません。`DECK_ADFS_POC_ATTRIBUTE_VALUE`はG2 probe専用で、後続の認可DBを代替しません。
 
 ### ADFS/Entra Domain Servicesインフラ（旧構成の参考）
 
