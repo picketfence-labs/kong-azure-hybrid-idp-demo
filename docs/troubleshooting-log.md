@@ -107,3 +107,17 @@
 - **実際どうだったか**: sandbox内の`terraform validate`はprovider pluginを起動できずschema読込みに失敗した。`docker compose ps`はDocker API接続権限ではなく、`.env`が無いため必須の`KONG_PG_PASSWORD`を展開できず停止した。
 - **対処・回避方法**: Terraformはprovider実行だけ権限付きで再実行し、構成validを確認。Composeは設定を補完・起動せず、project labelでDockerコンテナ一覧を直接確認して該当0件と判定した。
 - **現在状態**: Azure CLI認証は有効、`rg-kong-adfs-demo`は不存在、Terraform stateはdata source 3件のみ。`.env`とKong license設定は未準備で、`terraform/adfs.tfvars`とlocal stateは存在する。値は表示・変更していない。
+
+## 2026-09-15 開発再開時の調査スコープを先行しすぎた
+- **何を期待していたか**: PR #8から#11が示す追加要件を、仕掛かり中の実装と比較して再開点を定めること。
+- **実際どうだったか**: `development-handoff.md`の事前確認項目を一括して進め、差分整理より先に対象image、`kong-ee`、DB driverの調査へ入った。G2/G3で必要になる可能性はあるが、P0の目的に対して範囲が広く、現在地が分かりにくくなった。repoを固定しない`gh pr list`と無効な環境変数トークンによる既知の失敗も再発した。
+- **原因**: P0の「追加要件と現行実装の比較」と、後続PoCの技術的前提確認を同じ作業として扱ったため。
+- **対処・回避方法**: まず現行ファイルを再利用、変更、置換、PoC待ちに分類した。`kong-ee`はG2、DB driverはG3の具体的な試験構成を決めてから必要箇所だけ確認する。GitHub CLIは対象repoを明示し、キーチェーン認証を使う場合は無効な`GITHUB_TOKEN`を当該コマンドから除外する。
+- **静的検査の補足**: `api-access-map.json`のトップレベルを配列と仮定した初回`jq`集計は`Cannot index number with string "identity_route"`で失敗した。実際は`apis`配列を持つobjectだったため、schemaのkeyを確認して`.apis`を集計対象に修正した。
+- **push時の再発**: 通常の`git push`も`Invalid username or token`で失敗した。上記と同じく、当該コマンドだけから無効な`GITHUB_TOKEN`と`GH_TOKEN`を除外して再試行する。
+
+## 2026-09-15 P0 Path採用後も凍結済みの図に旧注記が残る
+- **何を期待していたか**: P0で公開Pathを採用した後、開発資料内の位置づけが一致すること。
+- **実際どうだったか**: Archify改訂3の再生成用JSONと配信HTMLには、P0前の「説明用のPath案」という注記が残っていた。
+- **原因**: 図版を凍結、配信した後にP0の選定が完了したため。
+- **対処・回避方法**: 図本体を手編集せず、Design Briefと`insurance-permissions.json`を実装の正本に指定した。図内注記はArchify再生成とreceipt更新を行う別PRで直す。

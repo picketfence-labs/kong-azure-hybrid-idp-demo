@@ -1,6 +1,6 @@
 # 開発再開パッケージ
 
-次の開発担当はこの順で作業します。**図版は承認済み、実装案は設計PRレビューとPoC待ち**です。Azure/アプリ/DBの実装再開完了を意味しません。
+次の開発担当は、既存実装を土台にして追加要件へ移行します。Group 2は仕掛かり中であり、ゼロから作り直すプロジェクトではありません。**図版と追加要件は承認済み、実装方式はPoC待ち**です。Azure/アプリ/DBの実装再開完了を意味しません。
 
 ## 正本と依存PR
 
@@ -26,14 +26,62 @@ Entra DS＋ADFS、共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend
 | 基盤 | 中断・削除の過去記録、現在live未確認 | 再plan/承認/再構築。過去stateと現在stateを区別 |
 
 - [ ] デモ資格情報を確認。公開履歴に記載された有効パスワードは管理者が変更する。このPRは本文をプレースホルダー化するだけで、履歴削除/失効はしない。
-- [ ] Gatewayライセンス、対象image digest、`kong-ee`の対象版、DB driver候補、必要ツールを確認。
+- [ ] Gatewayを起動する直前に、ライセンスと対象image digestを確認する。
+- [ ] `kong-ee`の対象版とDB driverは、具体的な検証項目が決まったG2/G3で確認する。P0の一般調査として先行しない。
 - [ ] `AGENTS.md`が未追跡でprovider設定説明に差異がある点を認識。実runtime権限を正とし、`.Codex/settings.json`の存在を推測しない。設定変更は別レビュー。
+
+## 既存実装と追加要件の差分
+
+2026-09-15に、PR #7までの実装とADR-0002の追加要件を比較した。追加作業の中心は、RouteのIdP分割、ADFS認可のDB化、共通UIへの変更、実イベントの表示である。既存の6バックエンド、共通Kong data plane、Entra DSとADFSの基盤コードは土台として残す。
+
+| 対象 | 現行 | 追加要件 | 扱い |
+|---|---|---|---|
+| `docker-compose.yml`の保険API 6サービス | GHCRの6イメージを`kong-internal`へ接続 | 同じ6バックエンドを両IdP経路で共有 | **再利用**。バックエンドを複製しない |
+| `kong/insurance-*.yaml`のService定義 | 6 Serviceと既存Upstream path | 同じ6 ServiceにEntra 4 Route、ADFS 3 Routeを接続 | **Service部分を再利用、RouteとPlugin設定を変更** |
+| `kong/insurance-customer.yaml` | ADFS用`/customer`が1 Route | `/entra/customer`と`/adfs/customer`が同一Serviceへ到達 | **Serviceを再利用、2 Routeへ変更**。正式PathはP0で確定済み |
+| `kong/insurance-ui-route.yaml` | UI全体をADFSの認可コードとsessionで保護 | 未認証でも図を維持し、選んだIdPを別画面で認証。両IdPの状態を混在させない | **Route設計を作り替え**。具体的なendpointとCookieはG1で決定 |
+| `legacy-authz-adapter`のPlugin骨格 | access phase、403応答、Upstream Header設定 | 検証済み属性を入力にし、DBでmappingとAPI許可を判定 | **Plugin骨格を再利用、判定ロジックとschemaを変更** |
+| `known_groups`と`allowed_groups` | decKとPlugin設定が認可の正本 | PostgreSQLをADFS認可の唯一の正本にする | **廃止対象**。移行後は並行保持しない |
+| `insurance-ui`のNext.js基盤 | ADFS専用画面、6ボタン、Bearer token relay、`response.ok`判定 | 共通図、IdP別操作、保護された履歴、認証・認可・到達の分離表示 | **ビルド基盤を再利用、画面とサーバー処理を作り替え** |
+| Archify素材 | 目標図、安定ID、イベント対応案を作成済み | 実イベントを原本とは別のadapterで表示 | **素材を再利用、adapterを追加** |
+| `terraform/adfs_*.tf` | Entra DS、ADFS VM、network、domain join | Entra DSとADFSを維持 | **原則再利用**。再構築前にplanと対象資源を再確認 |
+| `terraform/insurance_users.tf` | `department`に業務グループIDを直接設定 | ADFS属性からDBの業務グループへ変換。Entra側Security Group条件も追加 | **ユーザー作成骨格を再利用**。属性値の変更とGroup割当用リソースの追加が必要 |
+| Group 1のChat/OBO/MCP/LLM | 実装済み | 機能を維持 | **変更対象外**。統合時に回帰試験だけ行う |
+
+### 今は変更しない範囲
+
+- `services/chat-ui`、`kong/login-route.yaml`、`kong/mcp-route.yaml`、`kong/llm-route.yaml`
+- 保険APIのコンテナイメージとアプリケーション実装
+- Entra DSまたはADFSを別製品へ置き換える設計
+- ADFSへのOBO追加
+- 複数グループ、deny優先、cache、再試行、汎用ルールエンジン、認可マスタ管理UI
+- Azure資源の作成、削除、ADFS設定、decK sync。各操作は実行前に別途承認を得る
+
+### PoCまで保留する方式
+
+以下はADR-0003の候補であり、追加要件そのものではない。具体的なgateを先に定め、必要な範囲だけ調査する。
+
+| Gate | 確認すること | 調査を始める条件 |
+|---|---|---|
+| G1 | 別画面ログイン、経路別Cookie、callback、logout分離 | 最小RouteとUI shellの試験構成を決めた後 |
+| G2 | 検証済みOIDC claimの安全な受け渡し、偽造Header拒否 | 対象imageと試験Routeを固定した後。必要なら該当`kong-ee`箇所だけ確認 |
+| G3 | nonblocking DB接続、timeout、pool、値バインド、fail closed | DB schemaと1回の判定queryを決めた後。ここでdriver候補を比較 |
+| G4 | SVGまたはiframe adapter、実イベント、owner/run分離 | 最小イベント契約を決めた後 |
+
+この順序により、実装に使うか未定の内部コードやライブラリを先に広く分析しない。
+
+### P0の選定結果
+
+- [x] Entra 4入口とADFS 3入口の正式Pathに`/entra/...`と`/adfs/...`を採用した。
+- [x] `insurance-permissions.json`の論理ロール、属性値、35セルの期待値を初期実装入力として採用した。
+- [x] ADR-0003の第一候補をG1/G2のPoC対象として採用した。実装方式はPoC合格後に決定する。
+- [x] 最初の実装PRをG1/G2の最小PoCに限定した。DB、図連動、Azure applyを同じPRへ含めない。
 
 ## 推奨実装順序
 
 | 段階 | 作業 | 合格条件・成果物 |
 |---|---|---|
-| P0 | 設計レビュー、正式Path/fixture/方式案の採否 | ADR-0003の提案範囲と保留点を合意 |
+| P0 | **完了**。設計レビュー、正式Path、fixture、PoC対象を選定 | ADR-0003に選定結果と保留点を記録 |
 | P1 | 小さな認証・属性PoC（G1/G2） | 別画面、両IdP、session分離、検証済みclaim、偽造負例の証拠 |
 | P2 | DB接続と判定PoC（G3） | nonblocking/timeout/pool、安全SQL、5 mapping/13 allow、障害fail closed |
 | P3 | 図adapterと保護観測PoC（G4） | 原本を改変せず状態連動。owner/run分離、欠落時unknown |

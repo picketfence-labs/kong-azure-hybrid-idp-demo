@@ -22,7 +22,7 @@
 - `hybrid-idp-demo.architecture.json`: 再生成用Archify JSON。図の構成とIDの正本。
 - `hybrid-idp-demo.html`: JS/CSS/inline SVGを同梱した自己完結Viewer。別のJS/CSSファイルは不要。
 - `hybrid-idp-demo.png`: ドキュメント用プレビュー画像。
-- `api-access-map.json`: 6 APIと認証経路の対応表。customerのPathは説明用案であり、配備設定ではない。
+- `api-access-map.json`: 6 APIと認証経路の対応表。PathはP0で採用済みだが、配備設定や実測結果ではない。
 - `event-targets.json`: 将来の実行イベントと図のnode/edge IDを対応させるための資料。Archify標準APIではない。
 - `delivery-receipt.json`: ハッシュ、品質検証、公開URL。
 
@@ -43,7 +43,9 @@ SVGファイルが同梱されている場合はArchifyの標準Exportから書�
 
 「対象」は経路の対応であり、全利用者への許可ではありません。各経路で認証・認可に成功した時だけAPIへ転送します。APIへの矢印はこの意味を共有するため、customer以外に同じ「許可時のみ」を反復していません。
 
-customerの `/entra/customer/*` と `/adfs/customer/*` は**説明用のPath案**。同じ `insurance-customer` バックエンドを指し、APIコンテナを2つに増やす意味ではありません。正式Path、prefix除去/書き換え、HTTP method、issuerとセッションの経路間分離は設計更新時に確定します。
+customerの `/entra/customer/*` と `/adfs/customer/*` はP0で採用した公開Pathです。同じ `insurance-customer` バックエンドを指し、APIコンテナを2つに増やす意味ではありません。prefix除去と書き換え、issuerとsessionの経路間分離はPoCと実装で検証します。
+
+凍結済みの改訂3 HTMLと再生成用JSONには、P0前の「説明用のPath案」という注記が残っています。図本体を手編集せず、実装では[Design Brief](../../design-brief.md)と[認可fixture](../../design-fixtures/insurance-permissions.json)を正本にします。図内注記の更新は、Archifyで図を再生成してreceiptを更新する別PRで行います。
 
 ①はUIから対象Pathへの要求、②は未認証時にKongが返すリダイレクトにブラウザが従ってIdPへ進む処理、③はIdP認証後に別画面ブラウザが認可コード付きでKong callbackへ戻る処理です。②③の線はブラウザ経由の論理経路であり、サーバー同士のリダイレクトやIdPからKongへの直接通知ではありません。callback後のcode→token交換・token検証はKongが行い、認可後にAPIへ転送します。有効なセッションの再利用時は②③を省略します。**改訂3では共通のTest UIノードを復元**し、Entra系とADFS系Routeへ明示接続。図の画面を維持し、IdPログインだけ別画面で行います。OBO/MCP/LLMの詳細は本図では省略し、既存機能を削除する意図はありません。Entra DSへの同期は事前準備です。図のEntra IDとEntra DSの元テナントが同一であるとは断定しません。
 
