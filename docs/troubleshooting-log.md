@@ -209,3 +209,31 @@
 - **原因**: `gh auth status`ではmacOS keyringに有効な`shinichi-hashitani`の認証がある一方、優先される`GITHUB_TOKEN`環境変数が無効だった。
 - **対処・回避方法**: コマンド単位で`GITHUB_TOKEN`と`GH_TOKEN`を除外し、既存keyring認証を使ってpushとPR作成を再試行する。token値はログへ出力しない。
 - **解決確認**: 2つの環境変数をコマンド単位で除外したpushは成功し、リモート追跡ブランチを作成できた。
+
+## 2026-09-15 ADFS Federation Service名とVMホスト名のSPN競合を実行前に検出
+
+- **何を期待していたか**: 利用者が承認したADR-0004 Option Aに従い、既存の`vm-adfs-demo.adfsdemo.picketfencelabs.local`をFederation Service名として再利用できること。
+- **実際どうだったか**: PowerShell手順へ落とす前にMicrosoft公式資料を確認すると、Federation Service名の`HOST` SPNはADFSサービスアカウントへ登録する必要があり、既存サーバーのWindowsホスト名と同じ名前を使う構成は不正と明記されていた。VMのコンピューターアカウントが同じ`HOST` SPNを既に所有するため、gMSAと競合する。
+- **原因**: Option Aの初期比較で、TLS名とDNS再利用だけを評価し、Kerberos SPNの所有者を確認していなかった。
+- **対処・回避方法**: ADFSロール、証明書、DNSは変更していない。Option Aを不採用とし、専用Aレコード`adfs.adfsdemo.picketfencelabs.local`と同名証明書を使うOption Bへ切り替える案をADR-0004へ記録した。利用者の再確認後に実装する。
+
+## 2026-09-15 ローカル`kong-ee`の参照先を誤認
+
+- **何を期待していたか**: Group 2の未検証gateに必要なOpenID Connect pluginの`resource`指定だけを、既知のローカル`kong-ee`から確認できること。
+- **実際どうだったか**: 最初にこのProjectと同じ`picketfence-labs/LOCAL_REPO`配下を参照して見つからず、ホーム全体の`find`はmacOS保護領域で多数の権限エラーを出したため打ち切った。既存ログには正しいパスが`/Users/shinichi.hashitanikonghq.com/LOCAL_REPO/kong-ee`と記録済みだった。
+- **原因**: 既知パスを既存ログで確認する前に、現在のProjectからの相対的な保存場所を推測した。
+- **対処・回避方法**: 広い探索を続けず、今回必要な`authorization_query_args_names`、`authorization_query_args_values`、`response_mode`はKong公式資料で確認した。既存ログの正しいパスから対象revisionの該当schemaとCookie処理だけを限定確認し、設定名と既定値を照合した。実Gatewayでのschema検証はGateway起動承認後のgateに残す。
+
+## 2026-09-15 sandbox内の`git add`が`.git/index.lock`作成で停止
+
+- **何を期待していたか**: ProjectのAGENTS.mdにあるリポジトリ内操作の許可方針に従い、レビュー済みファイルだけをstageできること。
+- **実際どうだったか**: `git add`は`.git/index.lock: Operation not permitted`で、indexを変更する前に停止した。作業ファイルの変更内容には影響しなかった。
+- **原因**: 現在のsandboxはworktreeを書き込み可能だが、`.git`を読み取り専用として公開しており、Project内の許可方針より制約が強い。
+- **対処・回避方法**: `AGENTS.md`を含めず対象ファイルを明示した同じ`git add`だけを権限付きで再実行する。権限設定自体は変更しない。
+
+## 2026-09-15 公開リポジトリへのpushが安全審査で停止
+
+- **何を期待していたか**: 検証済みのOption B実装commitを既存publicリポジトリへpushし、PRを作成できること。
+- **実際どうだったか**: pushは通信開始前の安全審査で、内部ADFSドメイン等のインフラ情報を公開する操作には個別の明示承認が必要として拒否された。ローカルcommitは作成済みで、remoteは変更されていない。
+- **原因**: 利用者の進行指示はあったが、公開リポジトリへ今回のインフラ識別情報を送信するリスクへの明示承認とは判定されなかった。
+- **対処・回避方法**: 回避経路は使わず、公開される内容を利用者へ説明してpushの明示承認を得るまで停止する。
