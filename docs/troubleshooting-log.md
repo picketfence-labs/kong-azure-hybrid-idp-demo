@@ -74,3 +74,15 @@
   4. Terraform state上に残っていたEntra IDオブジェクト（テストユーザー5件・ドメイン参加用管理者・AADDS管理者グループ・サービスプリンシパル・ロール割り当て）は`terraform destroy -target=...`で削除。ただしVNet/サブネットはAADDSが自動生成したNIC（terraform管理外）が紐づいていたため、`az group delete`の完了を待ってから`terraform destroy`を再実行し、既に実体が無いことを検出させてstateから除去した
   5. `az group exists`と`terraform state list`の両方で、Azure側・state側ともに何も残っていないことを確認
 - **教訓（今後の運用への反映）**: `terraform apply`（特に長時間かかるリソースを含むもの）を非同期・バックグラウンドで実行する場合、「キャンセル」はローカルプロセスの停止だけでは不十分で、Azure側に実際に作成されたリソースの後始末（`import`して完了させる/実削除する）が別途必要になる。次回Group 2のADFS実インフラに再挑戦する際は、Entra Domain Servicesの作成に少なくとも74分以上（今回は打ち切ったため上限不明）かかることを見込み、時間に余裕のあるタイミングで着手すること
+
+## 2026-09-14 Archify説明素材の改訂2: 図品質とPR本文更新の回避
+- **何を期待していたか**: 6 APIの分担とAzure/1 DP/APIホスティング境界を図に反映し、PR #9を更新する。アプリやAzureの実装変更は行わない。
+- **実際どうだったか**: 初稿でDB照会ラベルが処理ノードに重なり、次に横幅1550のviewBoxで小画面のcontext文字が品質下限を下回った。ラベル位置と余白を修正し、viewBox幅1390でshowcase 9/9・4画面サイズのブラウザ検証を通過。文字サイズ縮小やoverflow隠蔽は行っていない。
+- **PR更新の症状**: `gh pr edit 9 --body-file ...`が`repository.pullRequest.projectCards`の旧Projects GraphQLエラーで失敗した。
+- **対処**: 同じ本文をGitHub REST `PATCH /repos/picketfence-labs/kong-azure-hybrid-idp-demo/pulls/9`で更新して成功。CLI更新、権限設定変更、PR mergeはしていない。
+- **補足**: 作業環境に`rg`が無かったため、限定ファイルをread/Pythonで確認した。runtime実装/E2Eの成功証拠とは分ける。
+
+## 2026-09-14 Archify改訂3: UIの説明欠落を修復
+- **症状**: 改訂2で構成境界と6 APIを優先した結果、UIを図から省略し、利用者から認可コードフローの開始点が説明できないと指摘を受けた。
+- **対処**: 共通Test UIをKong外へ復元し、両Route入口とブラウザ経由のIdP redirect/callbackを追加。callbackとserver-side token交換を区別。6 APIの経路分担・1 DP・Azure/API境界は維持。
+- **検証**: ラベル重なり修正後、目視で往復線の重複を検出し復路を分離。最終showcase 9/9・4画面サイズ・明暗表示・正規PNG/SVGを確認。アプリ実装や認証E2Eは未実施。

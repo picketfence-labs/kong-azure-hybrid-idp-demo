@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "status": "target-requirements-not-deployed-config",
+  "diagram_revision": 3,
+  "gateway_data_planes": 1,
+  "hosting": {
+    "apis": "one shared hosting environment outside both Azure and Kong",
+    "provider": "unspecified"
+  },
+  "apis": [
+    {
+      "backend": "insurance-product",
+      "identity_routes": [
+        "entra"
+      ]
+    },
+    {
+      "backend": "insurance-simulation",
+      "identity_routes": [
+        "entra"
+      ]
+    },
+    {
+      "backend": "insurance-application",
+      "identity_routes": [
+        "entra"
+      ]
+    },
+    {
+      "backend": "insurance-customer",
+      "identity_routes": [
+        "entra",
+        "adfs"
+      ]
+    },
+    {
+      "backend": "insurance-policy",
+      "identity_routes": [
+        "adfs"
+      ]
+    },
+    {
+      "backend": "insurance-claim",
+      "identity_routes": [
+        "adfs"
+      ]
+    }
+  ],
+  "customer_ingress_path_proposals": {
+    "entra": "/entra/customer/*",
+    "adfs": "/adfs/customer/*"
+  },
+  "notes": [
+    "API eligibility by identity route is separate from per-user authorization; listed routes do not permit every user.",
+    "Kong authenticates and authorizes each route before upstream forwarding.",
+    "Final path names, strip/rewrite behavior, methods and issuer/session isolation remain design tasks.",
+    "The old Group 2 five-group by six-API acceptance matrix must be revised, not blindly retained."
+  ]
+}
