@@ -208,3 +208,4 @@
 - **実際どうだったか**: GitHubがHTTPS認証を拒否し、`Invalid username or token`でpushが停止した。
 - **原因**: `gh auth status`ではmacOS keyringに有効な`shinichi-hashitani`の認証がある一方、優先される`GITHUB_TOKEN`環境変数が無効だった。
 - **対処・回避方法**: コマンド単位で`GITHUB_TOKEN`と`GH_TOKEN`を除外し、既存keyring認証を使ってpushとPR作成を再試行する。token値はログへ出力しない。
+- **解決確認**: 2つの環境変数をコマンド単位で除外したpushは成功し、リモート追跡ブランチを作成できた。
