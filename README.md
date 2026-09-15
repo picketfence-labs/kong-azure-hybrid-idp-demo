@@ -91,6 +91,8 @@ Terraform（`terraform/`配下）は、クライアントシークレット等�
 4. 疎通確認: `cd terraform && terraform init && terraform plan`
    - `auth_check` outputに想定通りのテナントID/サブスクリプションIDが出れば成功（この段階ではリソースは何も作成されない）
 
+`terraform/apps.tf`は既存Chat用callbackに加えて`/entra/auth/callback`をmiddle-tier Appへ登録し、保険デモのstatus Routeで使うSecurity Group claimを有効にします。別のOAuthクライアントは作成しません。
+
 ### Kong Gateway（decK宣言的設定）
 `kong/`配下がRoute別のdecK state file（`login-route.yaml`: Chat UIログイン、`mcp-route.yaml`: OBO+ACL、`llm-route.yaml`: Azure OpenAI抽象化）。秘匿値は平文で書かず、decKの環境変数テンプレート`${{ env "DECK_XXX" }}`（`DECK_`プレフィックス必須）で参照する。
 

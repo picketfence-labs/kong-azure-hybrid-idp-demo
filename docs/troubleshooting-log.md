@@ -155,3 +155,10 @@
 - **文書更新patch**: `services/insurance-ui/README.md`の全体置換で、既知のDeleteとAddの同時指定を再度使い、patch全体が検証段階で未適用になった。READMEもUpdate操作に統一し、文書ごとに小さく適用する。
 - **対象revisionのschema再確認**: ローカル`kong-ee`を`picketfence-labs/LOCAL_REPO`配下と誤記してprocess workdirへ指定し、`No such file or directory`でコマンド開始前に停止した。正しい既知パスは`/Users/shinichi.hashitanikonghq.com/LOCAL_REPO/kong-ee`だった。正しい場所から対象revisionを`git show`し、`login_tokens`の空配列を拒否する制約がなく、今回使うsession Cookie設定がschemaに存在することを確認した。
 - **branch push**: 無効な`GITHUB_TOKEN`と`GH_TOKEN`を除外してpushしたが、sandbox内では`github.com`を名前解決できず停止した。認証問題とは分離し、同じpushだけをネットワーク権限付きで再実行する。
+
+## 2026-09-15 P1実機gate再開時のローカル権限制限
+
+- **Azure CLI inventory**: `az account list`はAzure応答へ進む前に、ホーム配下の`.azure/az.sess`を更新できず`Operation not permitted`で停止した。同じ参照コマンドだけを権限付きで再実行し、ログイン先の有無を確認する。
+- **Docker inventory**: sandbox内からDocker socketへ接続できず、volumeとnetworkの参照が`permission denied`で停止した。同じ読み取り専用inventoryだけを権限付きで再実行する。
+- **Context7**: AzureAD providerの現行仕様を確認するためContext7 skillを選んだが、このsessionのtool inventoryにContext7 MCPが公開されていなかった。公式Terraform Registryの`azuread_application`資料と、ローカルのprovider schemaを使う`terraform validate`、planで代替した。
+- **Terraform再検証**: sandbox内の`terraform validate`は3つのprovider binaryがstdout handshake前に終了し、schemaを読み込めなかった。同じ構成の権限付きvalidateとplanは成功済みで、architectureと実行権限にも不整合はない。provider子processのsandbox制限として、validateだけを権限付きで再実行する。
