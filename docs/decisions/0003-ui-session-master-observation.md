@@ -59,6 +59,7 @@ UIにOAuthクライアントを重複実装せず、Kongの認可コードフロ
 - status Routeは、認証状態と検証済み属性の有無だけを返す。旧Bearer token relayは削除した。
 - `/adfs/auth/probe`だけに既存`legacy-authz-adapter`を接続した。期待するscalar属性値をPoC用環境変数で1件指定し、後続の認可DBや6 APIの設定とは分離した。
 - UI単体テスト8件、TypeScript、ESLint、webpack production build、Compose構文検証、今回のstate単体と既存stateを含む全10ファイルの`deck file validate`が成功した。
+- 実基盤の再監査ではAzureとDockerに再利用できる環境がなく、Terraform planは56 resourceの新規作成だった。実機gateの前提として、Entra middle-tier Appへ`/entra/auth/callback`を追加し、同AppがSecurity Group claimを要求するTerraform設定を追加した。既存Chat callbackとOBO設定は維持する。
 
 対象imageのlabelとローカルimage IDを確認し、source revisionを`7d95f6d021d05405e4c47244049ad21d64619201`へ固定した。そのrevisionのOpenID Connect pluginは、`upstream_headers`で指定したrequest Headerを先に削除し、検証済みtokenまたはuserinfoのclaimが存在する場合だけ値を設定する。OpenID Connect pluginの優先度1050は現行`legacy-authz-adapter`の100より高い。この実装順序から、外部の同名Headerを下位pluginがそのまま信頼する経路は作らない構成になっている。
 

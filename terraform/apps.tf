@@ -7,10 +7,15 @@ resource "azuread_application" "middle_tier" {
   display_name     = "kong-obo-demo-middle-tier"
   sign_in_audience = "AzureADMyOrg"
 
+  # 保険デモのstatus Routeが検証済みSecurity Group claimの有無を確認する。
+  # 既存Chat/OBOが使う同じAppへ追加し、別のOAuthクライアントは作らない。
+  group_membership_claims = ["SecurityGroup"]
+
   web {
     redirect_uris = [
       var.kong_gateway_login_redirect_uri,
       var.kong_gateway_post_logout_redirect_uri,
+      var.kong_gateway_insurance_entra_redirect_uri,
     ]
     logout_url = var.kong_gateway_post_logout_redirect_uri
   }

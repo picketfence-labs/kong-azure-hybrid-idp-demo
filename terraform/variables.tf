@@ -10,6 +10,12 @@ variable "kong_gateway_post_logout_redirect_uri" {
   default     = "http://localhost:8000/logout/callback"
 }
 
+variable "kong_gateway_insurance_entra_redirect_uri" {
+  description = "保険デモのEntra ID認証Routeが認可コードフローで使うリダイレクトURI。kong/insurance-ui-route.yamlと一致させること。"
+  type        = string
+  default     = "http://localhost:8000/entra/auth/callback"
+}
+
 # design-brief 2節「Entra ID・権限モデル」で確定済みの3ユーザー構成。
 variable "test_users" {
   description = "検証用Entra IDユーザー定義"

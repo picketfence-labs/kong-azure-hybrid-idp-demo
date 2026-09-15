@@ -23,12 +23,25 @@ Entra DS＋ADFS、共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend
 | `handler.lua` / `authz.lua` | Header＋known_groups/allowed_groups。DBなし | 検証済み属性の安全な入力を証明してからDB化 |
 | `insurance-ui` | 公開shell、別画面ログイン、経路別status/logout。旧token relayは削除 | 実GatewayでCookie分離、両IdP同時利用、logout分離を確認 |
 | 図 | 改訂3、quality 9/9、ブラウザ検証済み | 実イベントadapterは未実装 |
-| 基盤 | 中断・削除の過去記録、現在live未確認 | 再plan/承認/再構築。過去stateと現在stateを区別 |
+| 基盤 | 2026-09-15再監査でAzure resource group、Terraform managed resource、Docker環境なし | 56 createのplanを分割せずapplyしない。承認後に再構築 |
 
 - [ ] デモ資格情報を確認。公開履歴に記載された有効パスワードは管理者が変更する。このPRは本文をプレースホルダー化するだけで、履歴削除/失効はしない。
 - [ ] Gatewayを起動する直前に、ライセンスを確認する。対象image source revisionは`7d95f6d021d05405e4c47244049ad21d64619201`と確認済み。
 - [x] G2の具体的なHeader信頼境界だけを対象imageと同じsource revisionの`kong-ee`で確認した。DB driverはG3まで調査しない。
 - [ ] `AGENTS.md`が未追跡でprovider設定説明に差異がある点を認識。実runtime権限を正とし、`.Codex/settings.json`の存在を推測しない。設定変更は別レビュー。
+
+### P1実機gateの再監査
+
+2026-09-15にPR #13のmerge後、変更を加えず次を確認した。
+
+- `rg-kong-adfs-demo`と`rg-kong-obo-demo`はAzureに存在しない。
+- Terraform stateにはdata sourceだけが残り、managed resourceはない。
+- このProjectのDocker container、volume、networkはない。
+- 対象Gateway imageとsource revisionはローカルに存在し、`KONG_LICENSE_DATA`はshell環境に設定済み。P1用のdecK環境変数と`.env`は未準備。
+- `terraform plan -var-file=adfs.tfvars`は`56 add / 0 change / 0 destroy`。Group 1、Azure OpenAI、Entra DS、ADFS VMを一括で作るため、P1だけの最小操作としてapplyしない。
+- Entra middle-tier Appへ既存callbackを残したまま`/entra/auth/callback`と`SecurityGroup` claimを追加するTerraform差分を作成した。
+
+次の外部変更は、Terraform差分のレビュー後に利用者の明示承認を得て行う。Gatewayだけを先に起動しても両IdPの実機gateは完了しない。
 
 ## 既存実装と追加要件の差分
 
