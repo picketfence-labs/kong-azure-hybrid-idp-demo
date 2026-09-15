@@ -101,3 +101,9 @@
 - **対処・回避方法**: `-R picketfence-labs/kong-azure-hybrid-idp-demo`で対象を固定し、`env -u GITHUB_TOKEN`でキーチェーン認証を使用。未対応fieldと`jq`式を修正し、Git metadata更新だけ承認済み権限で再実行した。資格情報の値は表示・記録していない。
 - **PR間競合**: #8と#9は個別には`CLEAN`だったが、同じ`docs/troubleshooting-log.md`末尾への独立追記だったため、#8マージ後に#9へmainを取り込むと競合した。両方の記録を時系列順に保持して解消した。
 - **追加検査**: #9の生成SVGで末尾空白を検出し、主図のJSON/HTML/PNGを変えずに整形。Archify showcase 9/9、0 errors、0 warningsと`git diff --check`を再確認した。今回のagent mergeは利用者からの明示依頼による例外で、通常の人間merge方針は変更していない。
+
+## 2026-09-15 マージ後の作業開始前確認: sandboxと未設定Compose環境
+- **何を期待していたか**: ローカルのTerraform構成とDocker Compose稼働状態を読み取り専用で確認できること。
+- **実際どうだったか**: sandbox内の`terraform validate`はprovider pluginを起動できずschema読込みに失敗した。`docker compose ps`はDocker API接続権限ではなく、`.env`が無いため必須の`KONG_PG_PASSWORD`を展開できず停止した。
+- **対処・回避方法**: Terraformはprovider実行だけ権限付きで再実行し、構成validを確認。Composeは設定を補完・起動せず、project labelでDockerコンテナ一覧を直接確認して該当0件と判定した。
+- **現在状態**: Azure CLI認証は有効、`rg-kong-adfs-demo`は不存在、Terraform stateはdata source 3件のみ。`.env`とKong license設定は未準備で、`terraform/adfs.tfvars`とlocal stateは存在する。値は表示・変更していない。
