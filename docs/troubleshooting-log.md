@@ -237,3 +237,10 @@
 - **実際どうだったか**: pushは通信開始前の安全審査で、内部ADFSドメイン等のインフラ情報を公開する操作には個別の明示承認が必要として拒否された。ローカルcommitは作成済みで、remoteは変更されていない。
 - **原因**: 利用者の進行指示はあったが、公開リポジトリへ今回のインフラ識別情報を送信するリスクへの明示承認とは判定されなかった。
 - **対処・回避方法**: 回避経路は使わず、公開される内容を利用者へ説明してpushの明示承認を得るまで停止する。
+
+## 2026-09-15 `gh pr create`が`upstream`リポジトリを選択
+
+- **何を期待していたか**: push済みの`origin/ops/configure-adfs-service`から`origin/main`へのPRを作成できること。
+- **実際どうだったか**: `gh pr create`はhead/base SHAを解決できず、commit差分がないと応答した。remoteを確認するとbranchは`origin`に存在したが、`gh repo view`はfork元の`upstream`を選択していた。
+- **原因**: このworktreeには`origin`と`upstream`があり、repositoryを明示しない`gh`がPR対象として`upstream`を選んだ。
+- **対処・回避方法**: 今回のPR作成では`--repo picketfence-labs/kong-azure-hybrid-idp-demo`を明示する。git remote設定は変更しない。
