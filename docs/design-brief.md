@@ -3,7 +3,7 @@
 2026-09-14改訂。読者は開発担当とデモ実施者です。利用者が承認した要件・図と、これから検証する実装案を分けます。
 
 > [!warning] 開発停止からの設計更新。新要件は未実装
-> 旧実装PR #3〜#7はmerge済みですが、保険APIは全6本がADFS向け、カスタム認可はDB未参照、UIは旧方式です。ADFS実基盤の中断・削除は過去記録であり、現在liveや新E2Eを確認したものではありません。図版PR #9の内容は利用者レビュー済み、mergeは利用者が行います。以下の実装案はこの設計PRとPoCで確定します。
+> 旧実装PR #3〜#7はmerge済みですが、保険APIは全6本がADFS向け、カスタム認可はDB未参照、UIは旧方式です。ADFS実基盤の中断・削除は過去記録であり、現在liveや新E2Eを確認したものではありません。図版PR #9は利用者レビュー後、2026-09-15にmerge済みです。本書を含むPR #10は設計ベースラインをmainへ取り込むもので、実装案の採否はADR-0003のG1〜G4 PoCで確定します。
 
 [![共通UI・Azure・1 DP・6 API](assets/hybrid-idp/hybrid-idp-demo.png)](https://picketfence-labs.github.io/diagrams/5ecfdbb4c0e9/)
 

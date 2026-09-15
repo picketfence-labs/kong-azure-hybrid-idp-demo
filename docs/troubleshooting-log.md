@@ -94,3 +94,10 @@
 - **文書上の修正**: ADFSのServer applicationとWeb APIを区別し、TLS/コンテナDNS/同期/claim/全構成decK diffを再開gateにした。旧コマンドの無条件上書きやdomain admin常用を前提から外した。
 - **調査範囲**: Graphify graphは存在しなかった。既知の設計/設定/handler/UIファイルを限定確認し、全repo解析・graph生成は行っていない。UIソース参照を最初に`app/`で試して見つからず、既存YAMLに記載された`src/app/`で確認した。
 - **静的文書検査**: 初回checkerが旧Group 2シナリオ表も資格情報行として数えたため、対象を旧Group 1資格情報表へ限定して修正。42/42 pass、ローカルリンク切れなし。runtime検証とは区別する。
+
+## 2026-09-15 PR #8〜#10のマージ前確認: forkの既定repo、認証環境変数、stacked PR競合
+- **何を期待していたか**: `gh`が`origin`のforkを対象にし、open PRを依存順に確認・マージできること。
+- **実際どうだったか**: repo未指定の`gh pr list`はfork元を対象にしてopen PR 0件と表示した。また、無効な`GITHUB_TOKEN`がキーチェーン認証より優先され、最初のGit pushが認証エラーになった。`gh pr status --json currentBranch`は当該gh版で未対応、初回の`jq`整合検査は変数scope指定を誤り、worktree内の最初のmergeはsandboxの`.git`書込み制限で失敗した。
+- **対処・回避方法**: `-R picketfence-labs/kong-azure-hybrid-idp-demo`で対象を固定し、`env -u GITHUB_TOKEN`でキーチェーン認証を使用。未対応fieldと`jq`式を修正し、Git metadata更新だけ承認済み権限で再実行した。資格情報の値は表示・記録していない。
+- **PR間競合**: #8と#9は個別には`CLEAN`だったが、同じ`docs/troubleshooting-log.md`末尾への独立追記だったため、#8マージ後に#9へmainを取り込むと競合した。両方の記録を時系列順に保持して解消した。
+- **追加検査**: #9の生成SVGで末尾空白を検出し、主図のJSON/HTML/PNGを変えずに整形。Archify showcase 9/9、0 errors、0 warningsと`git diff --check`を再確認した。今回のagent mergeは利用者からの明示依頼による例外で、通常の人間merge方針は変更していない。

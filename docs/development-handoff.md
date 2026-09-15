@@ -9,7 +9,7 @@
 3. [ADR-0003](decisions/0003-ui-session-master-observation.md): 提案とPoC gate。合格後に採否を確定。
 4. [TESTING](../TESTING.md)、[ADFS runbook](adfs-setup-runbook.md)、[図版素材](assets/hybrid-idp/README.md)。
 
-この設計変更は図版PR #9のheadを土台にした独立PRです。#9を人間がmergeした後、設計PRのbaseをmainへ変更して差分を確認します。エージェントはmergeしません。中断ログPR #8は別件として保持します。
+この設計変更は図版PR #9のheadを土台にした独立PRとして作成しました。中断ログPR #8と図版PR #9はmainへmerge済みで、設計PR #10はbaseをmainへ変更し、stacked差分を再確認済みです。
 
 ## 変えてはいけない要件
 
