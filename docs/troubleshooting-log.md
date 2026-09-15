@@ -121,3 +121,37 @@
 - **実際どうだったか**: Archify改訂3の再生成用JSONと配信HTMLには、P0前の「説明用のPath案」という注記が残っていた。
 - **原因**: 図版を凍結、配信した後にP0の選定が完了したため。
 - **対処・回避方法**: 図本体を手編集せず、Design Briefと`insurance-permissions.json`を実装の正本に指定した。図内注記はArchify再生成とreceipt更新を行う別PRで直す。
+
+## 2026-09-15 G1/G2 PoC開始時のGit同期がsandboxで停止
+- **何を期待していたか**: PR #12マージ後の`main`を通常の`git fetch`とfast-forwardで同期できること。
+- **実際どうだったか**: sandbox内では`.git/FETCH_HEAD`を更新できず、`Operation not permitted`で停止した。
+- **原因**: 作業ファイルではなくGitメタデータへのsandbox書き込み制限。
+- **対処・回避方法**: Gitメタデータ操作だけ権限付きで再実行し、`main`をマージコミット`5bbe1b9`へfast-forwardした。未追跡の`AGENTS.md`は変更していない。
+
+## 2026-09-15 G1/G2 PoCの初回patchが文字列構文エラーで未適用
+- **何を期待していたか**: decK設定とTypeScriptファイルを1回のpatchで追加できること。
+- **実際どうだったか**: TypeScriptのtemplate literalとpatch実行ラッパーの文字列構文が衝突し、`SyntaxError: Invalid or unexpected token`でpatch全体が適用前に停止した。
+- **原因**: 複数言語の引用符を含む大きなpatchを1つのJavaScript文字列へ埋め込んだため。
+- **対処・回避方法**: ファイルを小さいpatchへ分け、template literalを含むpatchだけエスケープして再適用する。
+- **再試行**: 同一patchで同じファイルをDeleteとAddの両方へ指定したため、`multiple operations target`で検証停止した。この再試行も未適用。既存ファイルはUpdate操作で全体を置換する。
+- **再発**: UIファイル群のpatchでも同じDelete＋Add指定を含めてしまい、検証段階で未適用になった。以後、削除と追加を別patchへ分ける。
+- **layout追加時**: JSX内のtemplate literalにある`${...}`が実行ラッパー側で評価され、`ReferenceError`になった。削除済みファイルは`${`とbacktickの両方をエスケープしたpatchで直ちに復元する。
+
+## 2026-09-15 G1/G2 PoCの型検査がsandboxのtempdir制限で停止
+- **何を期待していたか**: insurance-uiのunit test、型検査、lint、buildを連続実行できること。
+- **実際どうだったか**: `bun test`は3件成功したが、次の`bun x tsc --noEmit`が`bun is unable to write files to tempdir: EPERM`で停止した。
+- **原因**: TypeScriptエラーではなく、`bun x`が使う一時ディレクトリへのsandbox書き込み制限。
+- **対処・回避方法**: 同じ型検査以降を権限付きで再実行し、コード起因の結果と実行環境の制限を分けて記録する。
+- **権限付き再実行**: tempdir制限は解消したが、`node_modules`が存在しない状態で`bun x tsc`を使ったため、単体のTypeScriptを取得してNext/React/Bunの型を解決できず失敗した。既存`bun.lock`に差分は無い。`bun install --frozen-lockfile`後にproject-local依存で再検証する。
+- **依存導入**: sandbox内の`bun install --frozen-lockfile`も同じtempdir `EPERM`で停止した。lockfileを変更しない同コマンドだけ権限付きで実行する。
+- **依存導入後の型エラー**: project-local依存で再実行すると、Next生成型`LayoutProps`がbuild前に未定義、`bun:test`の型定義が未導入という2件に絞れた。layoutのpropsを明示型に変更し、既存demo-apiと同じBun型をdev dependencyとして追加する。
+- **lint**: unit testと型検査は成功したが、React 19の`react-hooks/set-state-in-effect`がeffect直下の初回status取得を同期state更新として拒否した。初回取得をtimer callbackへ移し、effectを外部状態のpolling購読として明確化する。
+- **build**: unit test、型検査、lintの成功後、`next/font/google`がGoogle Fontsへ接続できずTurbopack buildが失敗した。PoCに外部Webフォントは不要で既存CSSにsystem font指定があるため、`next/font/google`依存を削除してoffline buildへ変更する。
+- **Turbopack**: Webフォント削除後はCSS処理用processがlocalhost portをbindできず、`Operation not permitted`でpanicした。コードや外部通信ではなくsandboxのprocess/network制限なので、buildだけ権限付きで再実行する。
+- **権限付きbuild**: 権限付きで再実行してもTurbopackのlocalhost port bindは同じ`Operation not permitted`で停止した。この実行環境では昇格対象外の制約が残るため、Next.js CLIが提供するwebpack経路でproduction buildを切り分ける。
+- **CLI help確認**: リポジトリrootで`bunx next build --help`を実行したため、対象packageのlocal binaryではなくbunの一時取得へ進み、既知のtempdir `EPERM`で停止した。以後は`services/insurance-ui/node_modules/.bin/next`を直接使う。
+- **decK初回検証**: 新規のidentity別session secretだけをダミー指定したが、同じstate fileに残る既存`DECK_ADFS_SESSION_SECRET`が未指定でtemplate展開前に停止した。`env`参照を列挙し、実値ではなく検証用ダミー値を全て指定して再実行する。
+- **decK全state結合**: 今回のstate単体は検証成功したが、既存のKong YAML全10ファイルを`deck file merge`へ渡すと`failed deserializing data as JSON and as YAML`で停止した。原因は完全なstate file群に、部分ファイル向けの`merge`を使ったコマンド選択ミスだった。完全state向けの`deck file render`で全10ファイルを結合し、生成物の`deck file validate`まで成功した。
+- **文書更新patch**: `services/insurance-ui/README.md`の全体置換で、既知のDeleteとAddの同時指定を再度使い、patch全体が検証段階で未適用になった。READMEもUpdate操作に統一し、文書ごとに小さく適用する。
+- **対象revisionのschema再確認**: ローカル`kong-ee`を`picketfence-labs/LOCAL_REPO`配下と誤記してprocess workdirへ指定し、`No such file or directory`でコマンド開始前に停止した。正しい既知パスは`/Users/shinichi.hashitanikonghq.com/LOCAL_REPO/kong-ee`だった。正しい場所から対象revisionを`git show`し、`login_tokens`の空配列を拒否する制約がなく、今回使うsession Cookie設定がschemaに存在することを確認した。
+- **branch push**: 無効な`GITHUB_TOKEN`と`GH_TOKEN`を除外してpushしたが、sandbox内では`github.com`を名前解決できず停止した。認証問題とは分離し、同じpushだけをネットワーク権限付きで再実行する。

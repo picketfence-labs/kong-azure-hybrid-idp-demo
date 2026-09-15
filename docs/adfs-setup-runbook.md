@@ -34,7 +34,7 @@ VM作成・ドメイン参加までと、ADFSサービス設定の完了を別�
 Microsoftの[Server application accessing a Web API](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/development/msal/adfs-msal-web-app-web-api)構成を参考に、**Server application（Kongのclient）とWeb API（resource/audience）を分けて**登録します。SAML用Relying Party設定と混同しないでください。
 
 1. Application Groupを作成し、Server applicationのclient ID/資格情報とWeb API identifierを記録する。secretは安全な保管先へ保存する。
-2. 設計PRで確定した`DEMO_ORIGIN`とcallback Pathを完全一致で登録する。現在の提案は`DEMO_ORIGIN/adfs/auth/callback`。旧`/insurance/login/callback`を残す必要があるかは移行計画で判断する。
+2. `DEMO_ORIGIN/adfs/auth/callback`を完全一致で登録する。旧`/insurance/login/callback`はP1で置き換えたため登録しない。
 3. 必要なscope/resource/audienceと、対象デモユーザーだけに許可するADFS側policyを確認する。公式サンプルの全員許可を本デモへ無条件コピーしない。
 4. Web API側のclaim規則と、どのtokenへ必要属性が出るかを確認する。Server applicationに全claim規則があると仮定しない。
 5. Entra系の新しい保険API用設定は別のclient/resource/必要権限として整理する。既存Chat/OBOのclient/audienceを黙って変更しない。
