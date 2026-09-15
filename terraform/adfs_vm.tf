@@ -62,7 +62,7 @@ resource "azurerm_windows_virtual_machine" "adfs" {
   }
 
   depends_on = [
-    azurerm_active_directory_domain_service.this,
+    azurerm_virtual_network_dns_servers.adfs,
   ]
 }
 
@@ -87,4 +87,6 @@ resource "azurerm_virtual_machine_extension" "domain_join" {
   protected_settings = jsonencode({
     Password = random_password.domain_join_admin.result
   })
+
+  depends_on = [time_sleep.domain_services_identity_sync]
 }

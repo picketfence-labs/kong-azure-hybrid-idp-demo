@@ -23,7 +23,7 @@ Entra DS＋ADFS、共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend
 | `handler.lua` / `authz.lua` | Header＋known_groups/allowed_groups。DBなし | 検証済み属性の安全な入力を証明してからDB化 |
 | `insurance-ui` | 公開shell、別画面ログイン、経路別status/logout。旧token relayは削除 | 実GatewayでCookie分離、両IdP同時利用、logout分離を確認 |
 | 図 | 改訂3、quality 9/9、ブラウザ検証済み | 実イベントadapterは未実装 |
-| 基盤 | 2026-09-15再監査でAzure resource group、Terraform managed resource、Docker環境なし | 56 createのplanを分割せずapplyしない。承認後に再構築 |
+| 基盤 | 2026-09-15にAzure基盤を全体再構築。Entra DS稼働、ADFS VMドメイン参加、最終plan no-op | runbook Section 2以降でADFSロール、証明書、OIDCを設定 |
 
 - [ ] デモ資格情報を確認。公開履歴に記載された有効パスワードは管理者が変更する。このPRは本文をプレースホルダー化するだけで、履歴削除/失効はしない。
 - [ ] Gatewayを起動する直前に、ライセンスを確認する。対象image source revisionは`7d95f6d021d05405e4c47244049ad21d64619201`と確認済み。
@@ -41,7 +41,19 @@ Entra DS＋ADFS、共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend
 - `terraform plan -var-file=adfs.tfvars`は`56 add / 0 change / 0 destroy`。Group 1、Azure OpenAI、Entra DS、ADFS VMを一括で作るため、P1だけの最小操作としてapplyしない。
 - Entra middle-tier Appへ既存callbackを残したまま`/entra/auth/callback`と`SecurityGroup` claimを追加するTerraform差分を作成した。
 
-次の外部変更は、Terraform差分のレビュー後に利用者の明示承認を得て行う。Gatewayだけを先に起動しても両IdPの実機gateは完了しない。
+Terraform再構築は、差分レビューと利用者の明示承認後に実施した。次の外部変更はADFS runbook Section 2以降であり、Gateway起動とdecK反映は別途承認を得て行う。
+
+### P1基盤再構築の実測結果
+
+2026-09-15に利用者承認後、56 add、0 change、0 destroyのplanから全体再構築を開始した。
+
+- Entra Domain Servicesは1時間19分59秒で作成され、`Succeeded`、`Running`とDC IP 2件を確認した。
+- 東日本では`Standard_B2s`が対象サブスクリプションの全ゾーンで利用できなかった。追加コストの承認後、同じ2 vCPU、4 GiB、x64の`Standard_D2als_v7`へ変更してVMを作成した。
+- VNetのDNSをEntra DSのDC IPへ向ける構成を追加した。VM再起動後、DNS SRV解決とDC discoveryを確認した。
+- Entra DS有効化前に作成したcloud-onlyユーザーはNTLM/Kerberos用ハッシュを持たなかった。Group 2用6ユーザーのパスワードをin-place更新し、今後はEntra DS完了後にユーザーを作成して15分待つ依存順序へ変更した。
+- ADFS VMは`PartOfDomain=True`、対象ドメイン一致、secure channel `NERR_Success`。最終の通常planは`No changes`だった。
+- ADFSロール、ファーム、証明書、Application Group、OIDC設定は未実施。次は[ADFS runbook](adfs-setup-runbook.md)のSection 2から進める。
+- Entra Domain Services、ADFS VM、Azure OpenAIなどが稼働中で継続コストが発生する。デモ終了後は利用者承認を得て削除する。
 
 ## 既存実装と追加要件の差分
 
@@ -99,10 +111,10 @@ Entra DS＋ADFS、共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend
 | P2 | DB接続と判定PoC（G3） | nonblocking/timeout/pool、安全SQL、5 mapping/13 allow、障害fail closed |
 | P3 | 図adapterと保護観測PoC（G4） | 原本を改変せず状態連動。owner/run分離、欠落時unknown |
 | P4 | Route/UI/Plugin/seedの本実装を小PRへ分割 | 新7入口、customer共有、旧入口廃止、回帰テスト |
-| P5 | 承認後のAzure再構築と統合E2E | 35セル＋追加負例＋既存Group 1回帰、未達なし |
+| P5 | Azure基盤再構築はP1で前倒し完了。統合E2Eは未実施 | 35セル＋追加負例＋既存Group 1回帰、未達なし |
 | P6 | デモ・削除・引き取り | 結果/コスト/残存確認、ハーネスfeedback |
 
-G1/G2の実IdP部分は基盤が必要です。ローカルのstub試験を先行しても実IdP合格へ繰り上げません。P1時点でAzureが必要なら最小構築の承認を先に得ます。費用が掛かる実基盤の時間を抑え、P2/P3のローカル部分を先行する順序変更は可。新しい方式変更はADR化します。
+G1/G2の実IdP部分は構築済みのAzure基盤を使います。ローカルのstub試験を実IdP合格へ繰り上げません。費用が掛かる実基盤の稼働時間を抑え、P2/P3のローカル部分を先行する順序変更は可。新しい方式変更はADR化します。
 
 ## PR・検証の運用
 

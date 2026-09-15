@@ -162,3 +162,49 @@
 - **Docker inventory**: sandbox内からDocker socketへ接続できず、volumeとnetworkの参照が`permission denied`で停止した。同じ読み取り専用inventoryだけを権限付きで再実行する。
 - **Context7**: AzureAD providerの現行仕様を確認するためContext7 skillを選んだが、このsessionのtool inventoryにContext7 MCPが公開されていなかった。公式Terraform Registryの`azuread_application`資料と、ローカルのprovider schemaを使う`terraform validate`、planで代替した。
 - **Terraform再検証**: sandbox内の`terraform validate`は3つのprovider binaryがstdout handshake前に終了し、schemaを読み込めなかった。同じ構成の権限付きvalidateとplanは成功済みで、architectureと実行権限にも不整合はない。provider子processのsandbox制限として、validateだけを権限付きで再実行する。
+
+## 2026-09-15 15:51 ADFS VM作成が東日本リージョンのSKU容量不足で停止
+
+- **何を期待していたか**: 承認済みの全体再構築plan（56 create、0 change、0 destroy）で、Entra Domain Servicesの完了後に`Standard_B2s`のADFS VMを東日本リージョンへ作成できること。
+- **実際どうだったか**: Entra Domain Servicesは1時間19分59秒で作成完了したが、`azurerm_windows_virtual_machine.adfs`の作成がAzure APIの409 `SkuNotAvailable`で停止した。Azureは`Standard_B2s`が東日本リージョンの容量制約により現在利用できないと応答した。
+- **原因**: Terraform構成や権限ではなく、対象サブスクリプションと東日本リージョンにおける`Standard_B2s`の容量制約。Azure SKU APIでもリージョンと全3ゾーンが`NotAvailableForSubscription`だった。
+- **対処・回避方法**: 作成済みリソースは削除せず、同リージョンで制限がないx64、2 vCPU、4 GiBの`Standard_D2als_v7`へ変更した。利用者が追加コストを承認後、VMを作成した。別リージョンへの変更はEntra Domain Servicesを含む再作成が必要になるため選ばなかった。
+- **コスト**: Entra Domain Services作成の待機に約80分。失敗したVMは作成されていないが、作成済みのEntra Domain ServicesとAzure OpenAIを含むリソースには継続コストが発生する。
+
+## 2026-09-15 代替VM SKUの再planでEntra Domain Servicesの意図しない再作成差分を検出
+
+- **何を期待していたか**: 部分構築後のstateに`Standard_D2als_v7`を指定すると、未作成のADFS VMとドメイン参加extensionだけが追加されること。
+- **実際どうだったか**: planは3 add、0 change、1 destroyとなり、作成済みの`azurerm_active_directory_domain_service.this`を再作成しようとした。Azureから読み取った`domain_configuration_type = "FullySynced"`が構成側では未指定のため`null`との差分となり、provider schema上のForceNew属性として判定された。
+- **原因**: Entra Domain Services作成後にAzureが確定した既定値をproviderがstateへ保存したが、Terraform構成が同じ値を明示していなかったため。
+- **対処・回避方法**: このplanは適用しなかった。構成へ現在値`domain_configuration_type = "FullySynced"`を明記し、再planが2 add、0 change、0 destroyになったことを確認してからVMを作成した。最終の通常planも`No changes`となり、意図しない再作成差分がないことを確認した。
+
+## 2026-09-15 ADFS VMの初回ドメイン参加でDCを発見できない
+
+- **何を期待していたか**: `Standard_D2als_v7`のVM作成後、`JsonADDomainExtension`が`adfsdemo.picketfencelabs.local`へ参加して再起動まで完了すること。
+- **実際どうだったか**: VMは63秒で作成できたが、domain join extensionが約3分後に`VMExtensionProvisioningError`で停止した。Windowsの参加ログは、ドメインコントローラーへ接続できず`NetpValidateName`と`NetpJoinDomainOnDs`が`0x54b`を返した。VMイメージはWindows Server 2022 Datacenter Azure Edition、AMD64として正常に起動している。
+- **原因**: 調査中。第一候補は、Entra Domain Services作成後に確定したDC IPがVNetのDNSサーバー設定へ反映されていない、または作成済みVMのNICが更新後のDNS設定をまだ取得していないこと。
+- **対処・回避方法**: VMとEntra Domain Servicesは削除しない。Azure上のVNet DNS設定、DC IP、VM/NICの状態、extensionの詳細を読み取り確認する。DNS設定を修正する場合はplanで破壊差分がないことを確認し、VMを再起動してからextensionを再試行する。
+- **原因確定**: VNetにカスタムDNS設定がなく、VMがEntra Domain ServicesのDCをDNSとして使っていなかった。VNetへDC IP 2件を設定してVMを再起動した後、VM内でDNS設定、LDAP SRVレコード解決、`nltest /dsgetdc`がすべて成功した。
+- **修正**: `azurerm_virtual_network_dns_servers.adfs`を追加し、VMがDNS設定完了後に作成される依存関係へ変更した。既存VMはDNS反映後に再起動した。
+
+## 2026-09-15 domain join再試行がAzure上のfailed extensionと競合
+
+- **何を期待していたか**: DNS修正とVM再起動後、1 add、0 destroyのplanでdomain join extensionを再作成できること。
+- **実際どうだったか**: 初回失敗時にAzure上へ`domain-join` extensionが残っていた一方、Terraform stateには記録されていなかった。再applyは「resource already exists、Terraformで管理するにはimportが必要」として作成前に停止した。
+- **原因**: AzureRM providerがextension作成要求後のprovisioning failureをstateへ保存しなかったが、Azure Compute側は失敗状態のextensionリソースを保持したため。
+- **対処・回避方法**: failed extensionをTerraform stateへimportする。その後、`-replace=azurerm_virtual_machine_extension.domain_join`を指定したplanでextensionだけを削除、再作成し、VMや他リソースを置換しないことを確認する。
+
+## 2026-09-15 DNS修正後のドメイン参加がアカウントロックアウトで停止
+
+- **何を期待していたか**: failed extensionをimportし、同extensionだけを置換すれば、DNS修正後のVMがマネージドドメインへ参加できること。
+- **実際どうだったか**: extensionはDCのDNS Aレコードを解決し、DC発見にも成功したが、DCのIPC接続がWindowsエラー1909、`0x775`で失敗した。このコードはアカウントのロックアウトを示す。
+- **原因**: Microsoft公式情報と一致した。`domain_join_admin`はEntra Domain Servicesの有効化前に作成したcloud-onlyユーザーだったため、マネージドドメイン認証用のKerberos/NTLMパスワードハッシュが生成されていなかった。extensionの失敗試行が既定の5回に達し、マネージドドメイン側で30分ロックアウトされた。
+- **対処・回避方法**: Group 2用のドメイン参加管理者とテストユーザー5件のパスワードをTerraformで再生成し、既存ユーザーへin-place更新した。構成上もこれらのユーザーをEntra Domain Services完了後に作成する依存順序へ変更した。`time_sleep.domain_services_identity_sync`で15分の資格情報同期待機を行い、パスワード変更時は待機を再実行する。既存ロックアウトの30分が経過するまで追加の認証試行を止め、解除後にfailed extensionだけを置換する。
+- **解決確認**: 最後の失敗から30分以上、パスワード更新から26分以上待ってfailed extensionだけを置換した。extensionは31秒で成功した。VM内部で`PartOfDomain=True`、ドメイン名一致、secure channelの`NERR_Success`を確認し、通常のTerraform planも`No changes`になった。
+
+## 2026-09-15 PR用ブランチのpushが無効な環境変数tokenで停止
+
+- **何を期待していたか**: 検証済みコミットを`origin/ops/rebuild-demo-environment`へpushできること。
+- **実際どうだったか**: GitHubがHTTPS認証を拒否し、`Invalid username or token`でpushが停止した。
+- **原因**: `gh auth status`ではmacOS keyringに有効な`shinichi-hashitani`の認証がある一方、優先される`GITHUB_TOKEN`環境変数が無効だった。
+- **対処・回避方法**: コマンド単位で`GITHUB_TOKEN`と`GH_TOKEN`を除外し、既存keyring認証を使ってpushとPR作成を再試行する。token値はログへ出力しない。
