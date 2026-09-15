@@ -34,6 +34,15 @@ resource "azurerm_subnet" "adfs_vm" {
   address_prefixes     = ["10.20.1.0/24"]
 }
 
+# Domain Services作成後に確定する2つのDC IPをVNetのDNSサーバーへ設定する。
+# standalone resourceに分けることで、VNet/subnet -> Domain Services -> DNS設定の順序を保ち、
+# VNet定義との循環依存を避ける。
+resource "azurerm_virtual_network_dns_servers" "adfs" {
+  provider           = azurerm.picketfence
+  virtual_network_id = azurerm_virtual_network.adfs.id
+  dns_servers        = azurerm_active_directory_domain_service.this.initial_replica_set[0].domain_controller_ip_addresses
+}
+
 # Entra Domain Servicesの正常性監視・PowerShell Remotingに必須のNSG受信規則
 # （Microsoft公式ドキュメントが要求する必須規則。サービスタグはAzure標準のもの）。
 resource "azurerm_network_security_group" "domain_services" {

@@ -45,4 +45,7 @@ resource "azuread_user" "insurance_test_user" {
   password              = random_password.insurance_test_user[each.key].result
   department            = each.key
   force_password_change = false
+
+  # Domain Services有効化後に作成し、NTLM/Kerberos用パスワードハッシュを生成する。
+  depends_on = [azurerm_active_directory_domain_service.this]
 }

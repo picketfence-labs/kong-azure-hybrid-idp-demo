@@ -1,6 +1,6 @@
 # Microsoft Entra Domain Services（マネージドドメイン、design-brief Group2「3. アーキテクチャ」）。
 # HashiCorp公式ドキュメントのazurerm_active_directory_domain_service標準構成に準拠。
-# 実際のterraform applyでの検証はまだ行っていない（az login未実施、docs/troubleshooting-log.md参照）。
+# 実環境での作成、DNS設定、資格情報同期、VMのドメイン参加を検証済み。
 
 # Microsoft Entra Domain Services（AADDS）の第一者アプリのサービスプリンシパル。
 # テナントで初めてAADDSを有効化する際にこの手順で作成する（Microsoft公式ドキュメント記載の
@@ -25,7 +25,7 @@ resource "azurerm_role_assignment" "aadds_network_contributor" {
   principal_id         = azuread_service_principal.domain_services.object_id
 }
 
-# ADFS VMのドメイン参加（terraform/adfs_vm.tf）、および将来docs/adfs-setup-runbook.mdで
+# ADFS VMのドメイン参加（terraform/adfs_vm.tf）、およびdocs/adfs-setup-runbook.mdで
 # ADFSロール・ファーム構築を行う際に使う専用のドメイン管理者アカウント。
 # 「terraform applyを実行した人物」のEntra ID資格情報をTerraformから扱うことはできない
 # （パスワードを知り得ない）ため、生成パスワード付きの専用アカウントを用意する
@@ -46,6 +46,9 @@ resource "azuread_user" "domain_join_admin" {
   mail_nickname         = "adfs-domain-admin"
   password              = random_password.domain_join_admin.result
   force_password_change = false
+
+  # Domain Services有効化後に作成し、NTLM/Kerberos用パスワードハッシュを生成する。
+  depends_on = [azurerm_active_directory_domain_service.this]
 }
 
 resource "azuread_group_member" "aadds_admin_domain_join" {
@@ -54,15 +57,34 @@ resource "azuread_group_member" "aadds_admin_domain_join" {
   member_object_id = azuread_user.domain_join_admin.object_id
 }
 
+# Entra IDからDomain Servicesへのユーザー、グループ、資格情報ハッシュ同期を待つ。
+# パスワードを再生成した場合はtriggersが変わり、待機を再実行する。
+resource "time_sleep" "domain_services_identity_sync" {
+  create_duration = "15m"
+
+  triggers = {
+    domain_join_admin_password = sha256(random_password.domain_join_admin.result)
+    insurance_test_passwords = sha256(join(",", [
+      for name in sort(keys(random_password.insurance_test_user)) : random_password.insurance_test_user[name].result
+    ]))
+  }
+
+  depends_on = [
+    azuread_group_member.aadds_admin_domain_join,
+    azuread_user.insurance_test_user,
+  ]
+}
+
 resource "azurerm_active_directory_domain_service" "this" {
   provider            = azurerm.picketfence
   name                = "adfs-demo-dc"
   location            = azurerm_resource_group.adfs.location
   resource_group_name = azurerm_resource_group.adfs.name
 
-  domain_name           = var.entra_domain_services_domain_name
-  sku                   = "Standard"
-  filtered_sync_enabled = false
+  domain_name               = var.entra_domain_services_domain_name
+  sku                       = "Standard"
+  domain_configuration_type = "FullySynced"
+  filtered_sync_enabled     = false
 
   initial_replica_set {
     subnet_id = azurerm_subnet.domain_services.id
@@ -82,6 +104,6 @@ resource "azurerm_active_directory_domain_service" "this" {
 
   depends_on = [
     azurerm_role_assignment.aadds_network_contributor,
-    azuread_group_member.aadds_admin_domain_join,
+    azuread_group.aadds_admins,
   ]
 }

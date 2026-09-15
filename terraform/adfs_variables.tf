@@ -39,9 +39,9 @@ variable "nsg_allowed_source_cidr" {
 }
 
 variable "adfs_vm_size" {
-  description = "ADFSサーバー用VMのサイズ。デモ用途のため最小構成（継続コストを抑える、CLAUDE.mdエスカレーション条件2番目参照）"
+  description = "ADFSサーバー用VMのサイズ。東日本で利用可能な2 vCPU・4 GiBのx64最小構成"
   type        = string
-  default     = "Standard_B2s"
+  default     = "Standard_D2als_v7"
 }
 
 variable "adfs_vm_admin_username" {

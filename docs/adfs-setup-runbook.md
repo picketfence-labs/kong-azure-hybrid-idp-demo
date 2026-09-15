@@ -1,6 +1,6 @@
 # Entra DS・ADFSの再構築と接続確認
 
-対象は構築担当者。最新[設計](design-brief.md)と[ADR-0001](decisions/0001-adfs-vm-provisioning-automation.md)に従い、基盤/ドメイン参加をTerraform、ADFS設定を手動で行います。**本書は改訂後の検証計画であり、完走済み手順ではありません。**
+対象は構築担当者。最新[設計](design-brief.md)と[ADR-0001](decisions/0001-adfs-vm-provisioning-automation.md)に従い、基盤/ドメイン参加をTerraform、ADFS設定を手動で行います。2026-09-15にSection 1のTerraform構築と検証を完了しました。Section 2以降は未実施です。
 
 ## 0. 再開前のgate
 
@@ -14,6 +14,7 @@
 
 1. Terraformの対象resourceと変更内容をレビューする。
 2. 承認後にEntra DS、ネットワーク、ADFS VM、ドメイン参加を構築する。
+   TerraformはEntra DS完了後にGroup 2ユーザーを作成し、資格情報ハッシュの同期を15分待ってからVMをドメインへ参加させる。
 3. Entra DSの健全性、DNS、時刻、ユーザー同期、VMドメイン参加を確認する。伝播待ちや再起動を成功扱いで飛ばさない。
 4. 必要なVM IP/FQDN、ドメイン名は既存Terraform outputsから取得する。資格情報は安全な保管先へ渡し、端末ログやPRへ出力しない。
 
