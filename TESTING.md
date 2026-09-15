@@ -117,7 +117,7 @@
 - 図版PR、設計PRを利用者がレビュー・mergeし、ADR-0003のPoC gateを確認する。
 - 実行commit、Gateway image digest、依存版、IdP/DB/Route設定の版を記録する。秘密値は記録しない。
 - テストユーザーはEntra側5論理ロール、ADFS側5業務グループに対応する架空アカウントを用意する。資格情報は管理者から安全に取得し、文書・画像・PRへ記載しない。
-- [レビューfixture](docs/design-fixtures/insurance-permissions.json)は設計表の機械可読版。稼働DBの状態や成功済みtest結果ではない。実装時のseedとの対応を検査する。
+- [初期実装fixture](docs/design-fixtures/insurance-permissions.json)はP0で採用した設計表の機械可読版。稼働DBの状態や成功済みtest結果ではない。実装時のseedとの対応を検査する。
 - APIの実operation・fixtureを確認し、変更系の副作用が起きない読取りGETを使う。UIから任意URLを入力させない。
 
 ### 証拠の書式
@@ -153,7 +153,7 @@
 
 ### 認可表を全セルで検証する
 
-表の正本は[設計本文](docs/design-brief.md)と対応するレビューfixture。ここに別の許可表を手書きしない。
+表の正本は[設計本文](docs/design-brief.md)と対応する初期実装fixture。ここに別の許可表を手書きしない。
 
 - **AUTH-E-01〜20**: Entraの5ロール×4 API。設計fixtureの **15 allow/5 deny** に従う。
 - **AUTH-A-01〜15**: ADFSの5グループ×3 API。**13 allow/2 deny**。

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "proposed-review-fixture-not-runtime-seed",
+  "status": "approved-p0-implementation-fixture-not-runtime-seed",
   "method": "GET",
   "api_routes": [
     {

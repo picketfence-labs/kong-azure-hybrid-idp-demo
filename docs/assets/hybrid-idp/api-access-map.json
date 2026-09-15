@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "target-requirements-not-deployed-config",
+  "status": "approved-p0-target-requirements-not-deployed-config",
   "diagram_revision": 3,
   "gateway_data_planes": 1,
   "hosting": {
@@ -53,7 +53,8 @@
   "notes": [
     "API eligibility by identity route is separate from per-user authorization; listed routes do not permit every user.",
     "Kong authenticates and authorizes each route before upstream forwarding.",
-    "Final path names, strip/rewrite behavior, methods and issuer/session isolation remain design tasks.",
+    "The schema_version 1 field name customer_ingress_path_proposals is retained for compatibility; its values were approved at P0.",
+    "Path names were approved at P0; strip/rewrite behavior, issuer/session isolation, and actual runtime behavior still require validation.",
     "The old Group 2 five-group by six-API acceptance matrix must be revised, not blindly retained."
   ]
 }

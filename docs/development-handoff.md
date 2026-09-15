@@ -38,7 +38,7 @@ Entra DS＋ADFS、共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend
 |---|---|---|---|
 | `docker-compose.yml`の保険API 6サービス | GHCRの6イメージを`kong-internal`へ接続 | 同じ6バックエンドを両IdP経路で共有 | **再利用**。バックエンドを複製しない |
 | `kong/insurance-*.yaml`のService定義 | 6 Serviceと既存Upstream path | 同じ6 ServiceにEntra 4 Route、ADFS 3 Routeを接続 | **Service部分を再利用、RouteとPlugin設定を変更** |
-| `kong/insurance-customer.yaml` | ADFS用`/customer`が1 Route | IdP別の異なるPathが同一Serviceへ到達。候補は`/entra/customer`と`/adfs/customer` | **Serviceを再利用、2 Routeへ変更**。正式PathはP0で確定 |
+| `kong/insurance-customer.yaml` | ADFS用`/customer`が1 Route | `/entra/customer`と`/adfs/customer`が同一Serviceへ到達 | **Serviceを再利用、2 Routeへ変更**。正式PathはP0で確定済み |
 | `kong/insurance-ui-route.yaml` | UI全体をADFSの認可コードとsessionで保護 | 未認証でも図を維持し、選んだIdPを別画面で認証。両IdPの状態を混在させない | **Route設計を作り替え**。具体的なendpointとCookieはG1で決定 |
 | `legacy-authz-adapter`のPlugin骨格 | access phase、403応答、Upstream Header設定 | 検証済み属性を入力にし、DBでmappingとAPI許可を判定 | **Plugin骨格を再利用、判定ロジックとschemaを変更** |
 | `known_groups`と`allowed_groups` | decKとPlugin設定が認可の正本 | PostgreSQLをADFS認可の唯一の正本にする | **廃止対象**。移行後は並行保持しない |
@@ -70,18 +70,18 @@ Entra DS＋ADFS、共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend
 
 この順序により、実装に使うか未定の内部コードやライブラリを先に広く分析しない。
 
-### P0で残る確認
+### P0の選定結果
 
-- Entra 4入口とADFS 3入口の正式Pathを確定する。`/entra/...`と`/adfs/...`は現在も候補である。
-- `insurance-permissions.json`の論理ロール、属性値、35セルの期待値を実装入力として採用するか確認する。
-- ADR-0003の第一候補をPoC対象として採用するか確認する。採用は実装方式の決定ではなく、gateで試す方式の決定である。
-- 最初の実装PRはG1/G2の最小PoCに限定する。DB、図連動、Azure applyを同じPRへ含めない。
+- [x] Entra 4入口とADFS 3入口の正式Pathに`/entra/...`と`/adfs/...`を採用した。
+- [x] `insurance-permissions.json`の論理ロール、属性値、35セルの期待値を初期実装入力として採用した。
+- [x] ADR-0003の第一候補をG1/G2のPoC対象として採用した。実装方式はPoC合格後に決定する。
+- [x] 最初の実装PRをG1/G2の最小PoCに限定した。DB、図連動、Azure applyを同じPRへ含めない。
 
 ## 推奨実装順序
 
 | 段階 | 作業 | 合格条件・成果物 |
 |---|---|---|
-| P0 | 設計レビュー、正式Path/fixture/方式案の採否 | ADR-0003の提案範囲と保留点を合意 |
+| P0 | **完了**。設計レビュー、正式Path、fixture、PoC対象を選定 | ADR-0003に選定結果と保留点を記録 |
 | P1 | 小さな認証・属性PoC（G1/G2） | 別画面、両IdP、session分離、検証済みclaim、偽造負例の証拠 |
 | P2 | DB接続と判定PoC（G3） | nonblocking/timeout/pool、安全SQL、5 mapping/13 allow、障害fail closed |
 | P3 | 図adapterと保護観測PoC（G4） | 原本を改変せず状態連動。owner/run分離、欠落時unknown |

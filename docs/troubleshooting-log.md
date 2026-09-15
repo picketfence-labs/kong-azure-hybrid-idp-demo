@@ -115,3 +115,9 @@
 - **対処・回避方法**: まず現行ファイルを再利用、変更、置換、PoC待ちに分類した。`kong-ee`はG2、DB driverはG3の具体的な試験構成を決めてから必要箇所だけ確認する。GitHub CLIは対象repoを明示し、キーチェーン認証を使う場合は無効な`GITHUB_TOKEN`を当該コマンドから除外する。
 - **静的検査の補足**: `api-access-map.json`のトップレベルを配列と仮定した初回`jq`集計は`Cannot index number with string "identity_route"`で失敗した。実際は`apis`配列を持つobjectだったため、schemaのkeyを確認して`.apis`を集計対象に修正した。
 - **push時の再発**: 通常の`git push`も`Invalid username or token`で失敗した。上記と同じく、当該コマンドだけから無効な`GITHUB_TOKEN`と`GH_TOKEN`を除外して再試行する。
+
+## 2026-09-15 P0 Path採用後も凍結済みの図に旧注記が残る
+- **何を期待していたか**: P0で公開Pathを採用した後、開発資料内の位置づけが一致すること。
+- **実際どうだったか**: Archify改訂3の再生成用JSONと配信HTMLには、P0前の「説明用のPath案」という注記が残っていた。
+- **原因**: 図版を凍結、配信した後にP0の選定が完了したため。
+- **対処・回避方法**: 図本体を手編集せず、Design Briefと`insurance-permissions.json`を実装の正本に指定した。図内注記はArchify再生成とreceipt更新を行う別PRで直す。

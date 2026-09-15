@@ -1,7 +1,7 @@
 # ADR-0003: UIセッション、認可マスタ、観測の実装方式
 
 - **日付**: 2026-09-14
-- **状態**: 提案中。要件はADR-0002で決定済み。実装案はこのPRのレビューとPoC結果で採否を確定する。
+- **状態**: 提案中。要件はADR-0002で決定済み。P0でPath、fixture、最初のPoC対象を選定済み。実装方式はPoC結果で採否を確定する。
 
 ## コンテキスト
 
@@ -29,13 +29,23 @@ UIにOAuthクライアントを重複実装せず、Kongの認可コードフロ
 
 各gateの結果を追記してから「決定」へ変更する。失敗時は代案と差分をレビューし、静かに方式を変更しない。
 
+### 2026-09-15 P0の選定結果
+
+利用者の進行指示を受け、次を初期実装契約とPoC対象に選定した。これはG1/G2の合格や実装方式の最終決定ではない。
+
+- 公開Pathは`/entra/product`、`/entra/simulation`、`/entra/application`、`/entra/customer`、`/adfs/customer`、`/adfs/policy`、`/adfs/claim`とする。
+- [insurance-permissions.json](../design-fixtures/insurance-permissions.json)の5論理ロール、5属性mapping、Entra 20セル、ADFS 15セルを初期実装入力として採用する。実Security Group object IDと稼働DBのseedは環境構築時に対応づける。
+- 最初の実装PRではG1とG2の最小PoCを扱う。経路別の別画面ログインとsession分離、安全なclaim受け渡し、外部Header偽造の拒否を試す。
+- G1/G2のPoCへDB、図連動、Azure applyを含めない。G3とG4は前段の結果を記録してから別PRで進める。
+- `kong-ee`はG2の具体的な疑問が生じた場合だけ該当箇所を確認する。一般的な事前分析は行わない。
+
 ## 判断基準・根拠
 
 - Pluginの主処理は属性取得、マスタ照会、許可判定、結果出力に限定する。
 - UIの表示失敗を理由に認可を許可しない。DB障害はfail closed。
 - ブラウザJavaScript、postMessage、URL、公開Pagesへcode/token/secretを渡さない。
 - 既存Chat/OBOとセッション・issuer・audienceを混線させない。
-- 正式Pathとseedのレビュー案は設計本文を正本とする。将来の複数グループ、deny優先、cache、マスタ管理UIは初期実装に含めない。
+- 正式Pathとfixtureは設計本文を正本とする。session、DB接続、観測の方式は各gateで決める。将来の複数グループ、deny優先、cache、マスタ管理UIは初期実装に含めない。
 
 ## 想定していたこと vs 実際どうだったか
 

@@ -113,7 +113,7 @@ LLMアクセスは`ai-proxy-advanced`プラグイン必須。実LLMはAzure Open
 
 ### 2. 要件と適用範囲
 
-[ADR-0002](decisions/0002-hybrid-idp-requirements.md)が確定要件、[ADR-0003](decisions/0003-ui-session-master-observation.md)が実装案を管理する。以下のPath・schema・fixture・状態コードは**レビュー案**であり、現行YAMLや配備済みAPIの説明ではない。
+[ADR-0002](decisions/0002-hybrid-idp-requirements.md)が確定要件、[ADR-0003](decisions/0003-ui-session-master-observation.md)が実装案を管理する。2026-09-15のP0確認で、7つの公開Pathと[認可fixture](design-fixtures/insurance-permissions.json)を初期実装契約として採用した。DB schema、UI/session、観測、状態コードはPoCで採否を決める案であり、現行YAMLや配備済みAPIの説明ではない。
 
 - 共通Kong Gateway 1 data planeで両経路を扱う。Kong設定用PostgreSQLと認可業務マスタは分離する。
 - AzureにはEntra ID、Entra DS、ADFS VM。全保険APIはKong外・Azure外の共通ホスティング領域に置く。既存ローカルCompose構成を基本にし、APIをAzureへ移す変更はしない。
@@ -121,9 +121,9 @@ LLMアクセスは`ai-proxy-advanced`プラグイン必須。実LLMはAzure Open
 - Test UIは既存Chat UIを置換しない。保険6 APIの7つの入口（customerは2経路）を対象にする。
 - Group 2は引き続きOIDC。初期SAML案は公式`saml` Pluginで必要属性を取り出せなかったため取り下げた。SAMLへ戻さない。
 
-### 3. RouteとAPIの対応案
+### 3. RouteとAPIの対応
 
-| Backend ID | Entra系公開prefix案 | ADFS系公開prefix案 | Upstreamの既存base path |
+| Backend ID | Entra系公開prefix | ADFS系公開prefix | Upstreamの既存base path |
 |---|---|---|---|
 | insurance-product | `/entra/product` | なし | `/products` |
 | insurance-simulation | `/entra/simulation` | なし | `/simulations` |
@@ -134,10 +134,10 @@ LLMアクセスは`ai-proxy-advanced`プラグイン必須。実LLMはAzure Open
 
 - prefixは完全一致または`/`区切りの子Pathだけに一致させる。`/entra/customer-evil`等の曖昧なprefixを拒否する。
 - prefixを一度だけ除去して既存base pathを付加する。例: `/adfs/customer/ITEM_ID` → `/customers/ITEM_ID`。queryは保持し、二重decode・二重prefix除去・Path traversalを拒否する。
-- customerは1 Service/同一Upstreamに2 Routeを置く案。認証・認可PluginはRoute単位に設定し、ServiceへADFS専用認可を掛けない。
+- customerは1 Service/同一Upstreamに2 Routeを置く。認証・認可PluginはRoute単位に設定し、ServiceへADFS専用認可を掛けない。
 - `/adfs/product`など対象外の組合せと、旧`/product`等の無接頭辞入口は移行完了後に残さない。別IdPへの自動fallbackを設けない。
 - 表の「対象経路あり」は利用者への許可ではない。認証後も以下の認可表で判定する。
-- APIボタンの初期操作は既存UIと同じ読取りGETを基本案にする。各Upstreamで実在するGET operationとfixtureをOpenAPI/実機で確認するまで、正常応答を仮定しない。POST等は別途設計する。
+- APIボタンの初期操作は読取りGETに限定する。各Upstreamで実在するGET operationとfixtureをOpenAPIまたは実機で確認するまで、正常応答を仮定しない。POST等は別途設計する。
 
 ### 4. UI、別画面ログイン、セッション
 
@@ -166,9 +166,9 @@ IdP内のエラーは各IdP標準画面で確認する。callbackにエラーが
 
 ### 5. 認可表とPostgreSQLマスタ
 
-#### Entra系のSecurity Group条件案
+#### Entra系のSecurity Group条件
 
-実際のクレームはSecurity Groupのobject IDで照合する。以下は新しいデモfixtureの論理ロール名で、Azure object IDではない。Terraform等で実IDを取得して環境設定へ対応させる。旧業務表の対象4列を投影した案であり、新しいテナント側割当は未実施。
+実際のクレームはSecurity Groupのobject IDで照合する。以下はP0で採用したfixtureの論理ロール名で、Azure object IDではない。Terraform等で実IDを取得して環境設定へ対応させる。新しいテナント側割当は未実施。
 
 | 論理ロール | product | simulation | application | customer |
 |---|---|---|---|---|
@@ -180,11 +180,11 @@ IdP内のエラーは各IdP標準画面で確認する。callbackにエラーが
 
 各Routeの許可Security Group集合をKong標準機能で照合する。新規保険APIの認可を既存MCPのOBO/Tool ACLへ勝手に置換しない。既存Chat/OBOは前節の回帰対象として別に維持する。複数Security Groupの場合は対象Routeの許可集合との積があれば許可する案。groups欠落・overage等で完全な集合が得られない場合はfail closedとし、Graphへの自動照会は初期実装に含めない。
 
-#### ADFS系の業務マスタ案
+#### ADFS系の業務マスタ
 
 ADFSは入力属性を発行し、PluginがDBで業務グループへ変換する。`department`は既存候補を維持するが、Entra DS同期、ADFS発行、token種別の確認はG2の前提。token上のclaim名は実機結果で固定する。
 
-| 架空の属性値案 | 業務グループ | customer | policy | claim |
+| 架空の属性値 | 業務グループ | customer | policy | claim |
 |---|---|---|---|---|
 | D-IT | it | allow | allow | allow |
 | D-SALES | sales | allow | allow | deny |
