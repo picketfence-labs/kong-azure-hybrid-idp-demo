@@ -114,3 +114,4 @@
 - **原因**: P0の「追加要件と現行実装の比較」と、後続PoCの技術的前提確認を同じ作業として扱ったため。
 - **対処・回避方法**: まず現行ファイルを再利用、変更、置換、PoC待ちに分類した。`kong-ee`はG2、DB driverはG3の具体的な試験構成を決めてから必要箇所だけ確認する。GitHub CLIは対象repoを明示し、キーチェーン認証を使う場合は無効な`GITHUB_TOKEN`を当該コマンドから除外する。
 - **静的検査の補足**: `api-access-map.json`のトップレベルを配列と仮定した初回`jq`集計は`Cannot index number with string "identity_route"`で失敗した。実際は`apis`配列を持つobjectだったため、schemaのkeyを確認して`.apis`を集計対象に修正した。
+- **push時の再発**: 通常の`git push`も`Invalid username or token`で失敗した。上記と同じく、当該コマンドだけから無効な`GITHUB_TOKEN`と`GH_TOKEN`を除外して再試行する。
