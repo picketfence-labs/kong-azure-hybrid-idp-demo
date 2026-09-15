@@ -1,18 +1,25 @@
 # 基本設計（Dev Design Brief）
 
-Picketfence Labs Obsidian Vaultの「Azure Entra IDとADFS/SAMLが共存するデモ環境の構築」プロジェクトで、利用者とのヒアリングを踏まえて確定した基本設計です（2026-09-08）。
+2026-09-14改訂。読者は開発担当とデモ実施者です。利用者が承認した要件・図と、これから検証する実装案を分けます。
 
-> [!info] このリポジトリの成り立ち
-> 本リポジトリは[picketfence-labs/kong-azure-obo-demo](https://github.com/picketfence-labs/kong-azure-obo-demo)をフォークして作成した。フォーク元の内容（本ドキュメントの「Group 1」に相当する部分）はそのまま踏襲し、変更しない。今回新たに追加するのが「Group 2（ADFSグループ）」。フォーク元の全体像・OBOの実装詳細は[docs/OBO.md](./OBO.md)も参照。
+> [!warning] 開発停止からの設計更新。新要件は未実装
+> 旧実装PR #3〜#7はmerge済みですが、保険APIは全6本がADFS向け、カスタム認可はDB未参照、UIは旧方式です。ADFS実基盤の中断・削除は過去記録であり、現在liveや新E2Eを確認したものではありません。図版PR #9は利用者レビュー後、2026-09-15にmerge済みです。本書を含むPR #10は設計ベースラインをmainへ取り込むもので、実装案の採否はADR-0003のG1〜G4 PoCで確定します。
 
-## 1. Projectゴール
-Kong Gatewayを単一のエントリポイントとして、次の2つの異なる認証経路が共存するデモ環境を構築する:
-- **Group 1**: Entra IDと直接OIDC連携し、OBO（On-Behalf-Of）でAIエージェントからのAPI利用を実現する（フォーク元の機能をそのまま維持）
-- **Group 2（ADFSグループ）**: Entra IDからフェデレーションしたADFSとOIDCで連携し、レガシーサービス側に存在する認可ロジック（属性からグループ情報を導出しAPIごとのアクセス可否を判定する）をKongのカスタムプラグインとして再現する
+[![共通UI・Azure・1 DP・6 API](assets/hybrid-idp/hybrid-idp-demo.png)](https://picketfence-labs.github.io/diagrams/5ecfdbb4c0e9/)
 
----
+## 1. ゴールと変更しない範囲
 
-## Group 1: Entra ID直結・OIDC OBO（フォーク元、変更なし）
+- 共通Kong Gateway **1 data plane**でEntra IDとADFSのOIDC認証を扱い、経路ごとの認可を説明・検証する。
+- Entra DS＋ADFSを維持する。自己管理AD DSは利用者が不採用とした。
+- 保険6 APIはEntra対象3、ADFS対象2、customer共有1へ分担する。APIは全てKong外・Azure外の同じホスティング領域。
+- Group 2のカスタム認可は簡潔なまま、PostgreSQLで属性対応とAPI許可条件を照会する。
+- 共通Test UIの図を維持し、IdPは別画面。判定に用いた属性・ルール・結果・停止地点を証拠付きで表示する。
+- 既存Chat、OBO、MCP Tool ACL、Azure OpenAI/LLMの機能は維持する。新しい保険APIのREST認可と同一視しない。
+- 本PRは文書・設計fixtureだけを変更する。アプリ、Plugin、Route YAML、Terraform、DB migrationは変更しない。
+
+確定要件は[ADR-0002](decisions/0002-hybrid-idp-requirements.md)、実装案は[ADR-0003](decisions/0003-ui-session-master-observation.md)、作業順序は[開発再開パッケージ](development-handoff.md)を参照してください。既存Group 1は次節、新規の保険API横断要件はその後に記載します。
+
+## Group 1: 既存Chat・OIDC OBO（機能維持・回帰対象）
 
 ### 2. 要件（Group 1）
 
@@ -102,86 +109,151 @@ LLMアクセスは`ai-proxy-advanced`プラグイン必須。実LLMはAzure Open
 
 ---
 
-## Group 2（ADFSグループ）: ADFS×OIDC・レガシー認可ロジックの再現（新規）
+## 共通保険APIデモ: Entra系とADFS系
 
-> [!warning] 方針転換の経緯
-> 当初「Group 2はKong Enterprise公式`saml`プラグインでADFSとSAML連携」という設計だったが、`kong-ee`ソースコード確認の結果、公式`saml`プラグインがSAMLアサーションの`AttributeStatement`を一切パースせず、NameID→既存Kong Consumerの静的マッピングしか行わないことが判明した（属性ベースのグループ判定が実現不可）。利用者判断により**Group 2もOIDCで認証する方式へ転換**した（IdPはADFSのまま、ADFSのOIDC/OAuth2エンドポイントを使う）。詳細な経緯はPicketfence Labs Obsidian Vault側のProjectノートを参照（Vault内部リンクのため本リポジトリからは非公開）。
+### 2. 要件と適用範囲
 
-### 2. 要件（Group 2）
+[ADR-0002](decisions/0002-hybrid-idp-requirements.md)が確定要件、[ADR-0003](decisions/0003-ui-session-master-observation.md)が実装案を管理する。以下のPath・schema・fixture・状態コードは**レビュー案**であり、現行YAMLや配備済みAPIの説明ではない。
 
-#### 現在（今回のスコープ）
-- IdPはADFS（Entra IDからフェデレーション済み）。**プロトコルはOIDC**（SAMLではない）。ADFSのOIDC/OAuth2エンドポイント（`/adfs/.well-known/openid-configuration`）に対し、`openid-connect`プラグインで通常の認可コードフローを実施する
-- **OBOは今回のスコープに含めない**（ADFSのOAuthサーバーがRFC 8693 Token ExchangeやMicrosoft固有のjwt_bearer OBO拡張をサポートするかは未検証・保証されていないため。将来拡張として残す）
-- **認可ロジックはカスタムプラグイン（Lua）で実装する**。Group 2は「レガシーサービス側」に既に存在する認可ロジック（属性→〈簡略化された〉認可サービス相当の処理→グループ情報取得、という一連の処理）をKongのカスタムプラグインとして再現するデモという位置づけ。`openid-connect`の`groups_claim`/`groups`によるKong標準機能だけで宣言的に済ませる構成は**不採用**（このデモの主眼は「レガシー認可ロジックをカスタムプラグイン化する」こと自体にあるため）
-- 属性→グループIDの正規化は**ADFS側では行わない**。テストユーザーの属性値自体を最初からグループID（`it`/`sales`/`claim`/`new-business`/`policy-admin`）として設定し、ADFSはOIDCトークンのクレームとしてそのまま発行する
-- 5グループID: `it` / `sales` / `claim` / `new-business` / `policy-admin`
-- バックエンドAPIは[kong-api-bundle-insurance](https://github.com/picketfence-labs/kong-api-bundle-insurance)のGHCRパブリックコンテナ6種（`product`/`customer`/`simulation`/`application`/`policy`/`claim`）をdocker-composeでpullして起動
-- グループ⇔API アクセスマトリクス（確定、下記参照）をカスタムプラグインの設定（Service単位の`allowed_groups`）で表現し、同一プラグインでアクセス可否判定も行う
-- **Group 2専用の新規UIが必要**。既存のChat UI（Group 1のAIエージェント向けフロントエンド）とは別物。**要件（確定済み）**: 最小の検証用ハーネス。ログインボタン＋バックエンド6API呼び出しボタン一覧を表示し、ログイン後は自分のグループIDと各API呼び出し結果（許可/拒否）を並べて表示する。技術スタックは既存Chat UIと同じNext.jsで統一し、別ページ/別ポートで稼働させる
-- **ADFSの実体**: picketfence自身のAzureサブスクリプション＋Entra IDテナント（Kong社の`kongstrong.onmicrosoft.com`とは別）に、Terraformで新規構築する
-  - ADドメイン要件はMicrosoft Entra Domain Services（旧Azure AD Domain Services、マネージドドメイン）で満たす
-  - ADFSサーバー（Windows Server VM）をEntra Domain Servicesへドメイン参加させ、ADFSロールを構成
-  - ADFSにOAuthサーバー機能（Application Group、Server application）を構成し、Kongをリライング・パーティとして登録
-  - Entra IDにテストユーザー（属性値=グループID）を作成し、Entra Domain Servicesへ同期させ、ADFS認証対象にする
-  - Kong（ローカルdocker-compose）↔ADFS（Azure）は**パブリックIP＋NSGで発信元IPを許可リスト化**する方式で疎通させる（VPN等は使わない）
-  - **継続コストが発生するが、デモ実施後は`terraform destroy`で全削除する前提のため考慮不要（利用者確認済み）**
+- 共通Kong Gateway 1 data planeで両経路を扱う。Kong設定用PostgreSQLと認可業務マスタは分離する。
+- AzureにはEntra ID、Entra DS、ADFS VM。全保険APIはKong外・Azure外の共通ホスティング領域に置く。既存ローカルCompose構成を基本にし、APIをAzureへ移す変更はしない。
+- カスタム認可はADFS系に限定する。Entra系はSecurity Groupに応じたKong標準機能の条件、既存MCPはTool ACLを維持する。
+- Test UIは既存Chat UIを置換しない。保険6 APIの7つの入口（customerは2経路）を対象にする。
+- Group 2は引き続きOIDC。初期SAML案は公式`saml` Pluginで必要属性を取り出せなかったため取り下げた。SAMLへ戻さない。
 
-#### 将来（今回はやらないが見据えておく）
-- Group 2へのOBO対応（ADFSのグラントタイプ対応状況が判明次第、再検討）
-- Konnectへの移行可能性
-- 他のAPI・IdPを将来追加する可能性
-- CI/CD化
+### 3. RouteとAPIの対応案
 
-#### グループ⇔API アクセスマトリクス（確定）
-| グループ | product | customer | simulation | application | policy | claim |
-|---|---|---|---|---|---|---|
-| it | ○ | ○ | ○ | ○ | ○ | ○ |
-| sales | ○ | ○ | ○ | ○ | ○ | × |
-| new-business | ○ | ○ | ○ | ○ | ○ | × |
-| policy-admin | ○ | ○ | × | × | ○ | ○ |
-| claim | × | ○ | × | × | ○ | ○ |
+| Backend ID | Entra系公開prefix案 | ADFS系公開prefix案 | Upstreamの既存base path |
+|---|---|---|---|
+| insurance-product | `/entra/product` | なし | `/products` |
+| insurance-simulation | `/entra/simulation` | なし | `/simulations` |
+| insurance-application | `/entra/application` | なし | `/applications` |
+| insurance-customer | `/entra/customer` | `/adfs/customer` | `/customers` |
+| insurance-policy | なし | `/adfs/policy` | `/policies` |
+| insurance-claim | なし | `/adfs/claim` | `/claims` |
 
-設計意図: `it`は全API横断アクセス（サポート・監視目的）。`sales`/`new-business`は見積り〜契約申込の営業フロー（product/customer/simulation/application）＋契約状況確認（policy）に関与し、claim業務には関与しない。`policy-admin`は既存契約管理が主務でclaimとの整合確認のためclaimも参照可能だが、営業系（simulation/application）には関与しない。`claim`は保険金請求処理が主務で、customer/policyの文脈は必要だが商品カタログ・営業系には関与しない。
+- prefixは完全一致または`/`区切りの子Pathだけに一致させる。`/entra/customer-evil`等の曖昧なprefixを拒否する。
+- prefixを一度だけ除去して既存base pathを付加する。例: `/adfs/customer/ITEM_ID` → `/customers/ITEM_ID`。queryは保持し、二重decode・二重prefix除去・Path traversalを拒否する。
+- customerは1 Service/同一Upstreamに2 Routeを置く案。認証・認可PluginはRoute単位に設定し、ServiceへADFS専用認可を掛けない。
+- `/adfs/product`など対象外の組合せと、旧`/product`等の無接頭辞入口は移行完了後に残さない。別IdPへの自動fallbackを設けない。
+- 表の「対象経路あり」は利用者への許可ではない。認証後も以下の認可表で判定する。
+- APIボタンの初期操作は既存UIと同じ読取りGETを基本案にする。各Upstreamで実在するGET operationとfixtureをOpenAPI/実機で確認するまで、正常応答を仮定しない。POST等は別途設計する。
 
-### 3. アーキテクチャ（Group 2）
+### 4. UI、別画面ログイン、セッション
 
-1. **IdP接続**: `openid-connect`プラグインがADFSのOIDCエンドポイントに対し認可コードフローを実施（OBOなし）。ログイン用の新規UI（上記）がフロー起点になる
-2. **認可ロジック**: 新規カスタムLuaプラグイン（仮称`legacy-authz-adapter`）が、`openid-connect`が検証したIDトークンのクレーム（属性値=グループID）を読み取り、（デモ内で簡略化された）レガシー認可サービス相当のロジックでグループを確定、`X-Group-Id`等のヘッダーを設定した上で、プラグイン設定の`allowed_groups`（Service単位で個別設定）と照合してアクセス可否を判定する
-3. **バックエンドAPI**: `kong-api-bundle-insurance`のGHCR公開イメージ6種をdocker-composeで起動し、それぞれKong Service化。各Serviceに上記カスタムプラグインを`allowed_groups`だけ変えて適用する
+#### Routeの責務案
 
-#### ADFS/Entra側インフラ（Terraform、picketfence自身のAzure環境）
-- Microsoft Entra Domain Services（マネージドドメイン）を有効化
-- ADFSサーバー用Windows Server VM を作成し、Entra Domain Servicesへドメイン参加、ADFSロールをインストール・構成
-- ADFSにOAuthサーバー機能（Application Group／Server application）を構成し、KongをRelying Partyとして登録
-- Entra IDにテストユーザー（属性値=グループID）を作成し、Entra Domain Servicesへ同期
-- NSGでKong実行環境（ローカル）の発信元IPのみADFSエンドポイントへのアクセスを許可
+| 用途 | Path案 | 認証・応答 |
+|---|---|---|
+| 図と操作UI | `/insurance/`と静的素材 | 未認証で開ける。認証済み属性・履歴は含めない |
+| ログイン開始/完了 | `/entra/auth/start`、`/entra/auth/callback`、ADFSは`/adfs/auth/...` | 対応IdPだけの認可コード/セッション処理。KongがOAuthクライアント |
+| 認証完了確認 | `/entra/auth/status`、`/adfs/auth/status` | 対応セッションを検証し、最小の状態のみ返す。未認証は401で、XHRをIdPへ転送しない |
+| ログアウト | `/entra/auth/logout`、`/adfs/auth/logout` | 対応するデモセッションだけを終了。IdP全体SSO logoutとは区別 |
+| 保険API | 前節の7 prefix | session/bearerを検証し認可。APIの未認証は401。ログインはUIの別画面操作から開始 |
+| 実行履歴 | `/entra/demo/runs/...`、`/adfs/demo/runs/...` | 対応セッション＋所有者照合。API Serviceへ転送しない |
 
-#### 未検証・実装時に確認が必要な技術的前提（要検証・要ADR化候補）
-- **ADFSのOAuthサーバーが対応するグラントタイプ・クレームカスタマイズの実際の挙動**（Application Group設定、Claim Issuance Policyでのカスタムクレーム発行方法）。Windows Server 2016+のADFSはOAuth 2.0/OIDCをサポートするが、Entra IDほど設定の自由度・ドキュメントが豊富ではないため実機検証が必要
-- 使用中のベータイメージ`kong/kong-gateway-dev:pr-21082-ubuntu`が、ADFSのOIDCエンドポイント（Entra IDと異なるディスカバリドキュメント形式の可能性）に対しても`openid-connect`プラグインが問題なく動作するか確認する
-- ADFSのWindows Server VMプロビジョニング＋ADFSロール構成の自動化度合い（Terraformのみで完結するか、追加でPowerShell DSC/カスタムスクリプト拡張が必要か）
+1. 利用者のクリックで別画面を開ける状態を作り、サーバーが確定したAPIキー→IdP対応を使ってログインを開始する。任意の`issuer`/`return_to`を受け入れない。
+2. 未認証ならKongが別画面ブラウザを選択済みIdPへredirectする。元の図画面は維持する。
+3. IdPは別画面ブラウザを認可コード付きcallbackへ戻す。Kongがstate/nonce等を検証し、codeをtokenへ交換、tokenを検証してセッションを確立する。UIがcode交換を代行しない。
+4. 元画面は同一originの認証状態を再確認する。postMessageは通知だけで、認証成功の証拠にはしない。origin/source/schemaを検証し、code/tokenを含めない。
+5. API要求は対応CookieでKongへ送る。認可後だけUpstreamへ到達し、記録された結果を図へ表示する。
 
-### 4. 技術スタック（Group 2）
-- Kong Gateway Enterprise（Group 1と同じイメージ、ADFS OIDC疎通確認後に最終確定）
-- カスタムプラグイン: Lua
-- IaC: Terraform（Azure/Entra ID/Entra Domain Services/ADFS VM）、decK
-- バックエンドAPI: `kong-api-bundle-insurance`のPython/FastAPIコンテナをそのままpull（新規実装なし）
-- 専用UI: Next.js（Group 1のChat UIと同一スタック、別ページ/別ポート）
+Cookie案は`insurance_entra_session`と`insurance_adfs_session`、scopeは対応prefix、秘密鍵も分離。既存ChatのCookieとは共有しない。実際のPlugin設定名・Cookie Path・SameSite・Secure・HttpOnly・callback遷移はG1で確認する。HTTPSを標準の検証条件とし、localhost HTTPが必要なら限定例外と証拠を記録する。
 
-### 5. 検証方法（Group 2）
-- 未認証でのGroup 2系Routeアクセスは全てADFSへのリダイレクト（認可コードフロー開始）が発生し、直接のAPI応答は返らないこと
-- ADFSでの認証成功後、IDトークンのクレームから正しいグループIDがヘッダーに設定されること（5グループ全パターン）
-- グループ×API アクセスマトリクス（上記30セル）について、許可/拒否が設計表通りに機能すること（positive/negativeケース両方）
-- Kong（ローカル）↔ADFS（Azure）のネットワーク到達性: NSG許可リスト外のIPからはADFSエンドポイントに到達できないこと
+popupがブロックされたら「別画面で開く」リンクを提示する。COOP等でopenerが切れても状態確認で成立させる。同一タブへ黙って切り替えない。両IdPのログイン状態は別表示し、セッション再利用をIdP往復のアニメーションにしない。
 
-**外部依存先の前提条件確認（実装着手前）**: ADFSのOAuthサーバー機能・Claim Issuance Policyが実際にKongへ想定通りのクレーム（属性値=グループID）付きIDトークンを返せる状態になっていることを、本格的な認可ロジック実装前に確認する。
+IdP内のエラーは各IdP標準画面で確認する。callbackにエラーが返らずIdPに留まる場合、UIは認証待ち/未確認とする。APIの401、Kongの403、DBの503、Upstreamの5xxをIdP画面のエラーへ置き換えない。
 
-### 6. 成果物（Group 2）
-- Group 2の全機能（`openid-connect`のADFS向け設定、`legacy-authz-adapter`カスタムプラグイン、6バックエンドサービスのdecK設定、専用UI）
-- Terraform: Entra Domain Services・ADFS VM・NSG・Entra IDテストユーザー・ADFS OAuthサーバー設定
-- 上記「検証方法」の全テストケースが確認できること
+### 5. 認可表とPostgreSQLマスタ
 
-## 参照
-- フォーク元: [picketfence-labs/kong-azure-obo-demo](https://github.com/picketfence-labs/kong-azure-obo-demo)（Group 1の実装・実機E2E検証済み）
-- バックエンドAPI提供元: [picketfence-labs/kong-api-bundle-insurance](https://github.com/picketfence-labs/kong-api-bundle-insurance)（public、GHCR公開コンテナ6種）
-- ローカル参照リポジトリ: `kong-ee`（`openid-connect`プラグインの`groups_claim`/`upstream_headers`等の実装確認、ADFS向け設定の参考。Group 2の認可ロジック用カスタムプラグインの開発にも使う）
+#### Entra系のSecurity Group条件案
+
+実際のクレームはSecurity Groupのobject IDで照合する。以下は新しいデモfixtureの論理ロール名で、Azure object IDではない。Terraform等で実IDを取得して環境設定へ対応させる。旧業務表の対象4列を投影した案であり、新しいテナント側割当は未実施。
+
+| 論理ロール | product | simulation | application | customer |
+|---|---|---|---|---|
+| it | allow | allow | allow | allow |
+| sales | allow | allow | allow | allow |
+| new-business | allow | allow | allow | allow |
+| policy-admin | allow | deny | deny | allow |
+| claim | deny | deny | deny | allow |
+
+各Routeの許可Security Group集合をKong標準機能で照合する。新規保険APIの認可を既存MCPのOBO/Tool ACLへ勝手に置換しない。既存Chat/OBOは前節の回帰対象として別に維持する。複数Security Groupの場合は対象Routeの許可集合との積があれば許可する案。groups欠落・overage等で完全な集合が得られない場合はfail closedとし、Graphへの自動照会は初期実装に含めない。
+
+#### ADFS系の業務マスタ案
+
+ADFSは入力属性を発行し、PluginがDBで業務グループへ変換する。`department`は既存候補を維持するが、Entra DS同期、ADFS発行、token種別の確認はG2の前提。token上のclaim名は実機結果で固定する。
+
+| 架空の属性値案 | 業務グループ | customer | policy | claim |
+|---|---|---|---|---|
+| D-IT | it | allow | allow | allow |
+| D-SALES | sales | allow | allow | deny |
+| D-NEW-BUSINESS | new-business | allow | allow | deny |
+| D-POLICY-ADMIN | policy-admin | allow | allow | allow |
+| D-CLAIM | claim | allow | allow | allow |
+
+旧業務表のADFS対象3列を投影する。5 mapping行、GETの許可行は13件、denyは2件の「許可行なし」で表現する。API対象外のEntra3サービスをADFSマスタへ登録しない。
+
+| テーブル案 | 主な列・制約 |
+|---|---|
+| `attribute_group_map` | `attribute_value`主キー、`group_id`必須。入力属性名はPlugin設定で1つ固定 |
+| `api_permission` | `group_id, api_id, http_method`の複合主キー、`rule_id`一意。初期は明示GET allow行だけ |
+| `master_revision` | seed版を示す1行。判定と同じDB snapshotで読む |
+
+- Pluginから読む認可の正本はPostgreSQL。seedファイルは配備入力、Kongの`allowed_groups`を並行正本にしない。
+- `api_id`はRoute/Plugin設定で固定し、callerのHeader/queryで上書きしない。HTTP methodは実リクエストから取得する。
+- 1つのJOIN照会または同一snapshotの読取りでmapping、許可行、revisionを取得する。複数グループ・deny優先・cache・再試行・汎用ルールエンジンは初期実装に含めない。
+- 主処理は「検証済み属性取得 → DB照会 → 判定 → 最小結果出力」。DB接続helperと観測出力を分け、図の制御をPluginに入れない。
+- SQLを文字列連結しない。ドライバーの安全な値バインド、nonblocking動作、timeout、pool、解放、対象イメージでのロードをG3で証明する。ライブラリ名やバージョンは未決。
+- DBはKong内部テーブルと分離。Pluginユーザーは必要なSELECTだけ。migration/seedユーザーを分け、DB portをホストへ公開しない。seed更新はtransactionで行う。
+
+#### 認証済み属性の信頼境界
+
+現行`handler.lua`の`kong.request.get_header`を、その名前だけで「検証済み属性」とみなさない。OIDC前にcaller由来の予約Headerを削除し、OIDCが検証したclaimだけを後段へ渡す必要がある。
+
+G2では対象`kong-ee`版を確認し、検証済みcontextへの接点、または証明済みのHeader bridgeを選ぶ。Plugin順序・phase・header欠落時・同名重複Headerの負例を実Gatewayで試験する。安全な接点がなければ認可Pluginの本実装を進めない。ID tokenをAPI用access tokenの代わりに流用しない。
+
+### 6. 判定結果と観測契約案
+
+| 結果 | API/内部結果の目安 | 表示と後段 |
+|---|---|---|
+| token無効/未認証 | API 401 | authentication failed、Upstreamへ転送しない |
+| 必要属性欠落・不正 | 403 / `invalid_attribute` | 認証成功と属性要件不足を区別 |
+| mappingなし | 403 / `attribute_unmapped` | 属性未登録。DB接続障害ではない |
+| 対象API/操作の許可行なし | 403 / `permission_missing` | 認可拒否、Upstreamへ転送しない |
+| DB接続/timeout/schema障害 | 503 / `authorization_unavailable` | DB障害でfail closed。権限不足と表示しない |
+| 許可・Upstream正常 | allow＋Upstream status | 認可成功と到達を別段階で記録 |
+| 許可・Upstream障害 | allow＋5xx/timeout | 認可をdenyに戻さない。到達証拠なしならunknown |
+| callback未帰還/イベント欠落 | 結果未取得 | timeoutだけでIdP失敗・未到達を断定しない |
+
+この表は目標の分類。OIDCが生成する実際のstatus/reasonはPoCでマッピングし、値を架空の実測として埋めない。
+
+#### Headerと実行記録
+
+提案する予約Headerは`X-Demo-Request-Id`、`X-Demo-Identity-Route`、`X-Demo-Authz-Result`、`X-Demo-Rule-Id`、`X-Demo-Master-Revision`。入力属性の限定要約は`X-Demo-Authz-Input`、業務グループは既存`X-Group-Id`を使う案。Entraでは実際に比較したSecurity Group ID集合とマッチした条件を示す。
+
+- ingressの同名HeaderとUpstreamの同名response Headerを削除/上書きし、Gatewayが生成した値だけを観測に使う。デバッグHeaderを認可入力へ再利用しない。
+- allow時のUpstream request Headerはバックエンドログ等で確認する。deny時はUpstreamへ送らないため、保護された結果APIで判定情報を表示する。
+- token、code、cookie、client secret、全claim、氏名/UPNの不要な表示はしない。属性値は架空デモ値のallowlist・長さ制限・エンコードを適用する。
+- Entra標準Pluginの拒否も観測できるよう、認可の後段access処理だけに依存しない観測hookを検証する。観測層は認可を決めず、失敗時もallowへ変更しない。
+
+実行記録案: `schema_version, run_id, request_id, sequence, stage, status, evidence_source, observed_at, identity_route, api_id, method, input_summary, matched_rule, master_revision, authz_result, upstream_status`。`stage`とdiagram IDを別にし、1つのRoute箱に認証/認可の複数段階を対応できるようにする。
+
+- 状態は`not_started/pending/succeeded/denied/failed/not_reached/unknown`。`not_reached`は前段停止などの証拠がある時だけ使う。
+- 各runをサーバー発行のランダムIDと所有者に結合し、run IDそのものを認可に使わない。履歴取得時に対応IdPセッションとownerを検証する。
+- 未認証の図画面が持てるのは本人の開始/待機状態だけ。認証後の属性・判定履歴は経路別の保護endpointから取得する。
+- 既存UIサーバーの有期限・件数制限付きメモリ保持とpollingを第一候補とする。再起動/期限切れは履歴消失として表示する。tokenはこの保存先へ入れない。
+- Gateway観測hookからの書込みは内部専用・送信元認証付きとする。ブラウザから任意の成功イベントを書き込めない。欠落、順不同、重複、別runを検出する。
+- 外部公開Pagesは静的説明用。実行中の属性や履歴を送らない。開発repo内の素材を同一アプリで使用し、SVG＋overlayまたはiframe＋adapterをG4で選ぶ。
+
+### 7. 検証gateと完了条件
+
+[TESTING.md](../TESTING.md)の新規ケースと既存Group 1回帰を実施し、commit/image digest/環境/操作/期待値/実測/証拠/未達を記録する。文書更新、図のpass、単体test、E2Eのpassを混同しない。
+
+実装順序: [開発再開手順](development-handoff.md)。G1〜G4を小さいPoCで検証してADR-0003を確定した後に、本体の変更と実基盤E2Eへ進む。Azureへのapply/destroy、IdP設定変更、decK syncには別途承認を得る。
+
+### 8. 一次資料と保証範囲
+
+- [Kong OpenID Connect](https://developer.konghq.com/plugins/openid-connect/): セッションと認可コードフローの一般的な機能。対象ベータイメージでの組合せは未検証。
+- [Kong request PDK](https://developer.konghq.com/gateway/pdk/reference/kong.request/): Header取得API。claimの信頼性そのものを保証しない。
+- [Microsoft AD FS Server App/Web API](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/development/msal/adfs-msal-web-app-web-api): Application Group内のServer applicationとWeb APIを区別。具体的なKong接続条件はrunbookで検証する。

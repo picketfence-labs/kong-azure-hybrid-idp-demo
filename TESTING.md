@@ -1,6 +1,6 @@
 # 動作確認手順
 
-このページだけを見れば、design-brief（[docs/design-brief.md](./docs/design-brief.md) 5節）が定めた検証項目を一通り実地確認できます。セットアップ手順（`docker compose up` / `deck gateway sync`）は済んでいる前提です。未セットアップの場合は [README.md](./README.md) の「セットアップ手順」を先に行ってください。
+[設計](docs/design-brief.md)に対応する既存Group 1回帰と、新しい保険API受入計画を記載します。セットアップ手順（`docker compose up` / `deck gateway sync`）は済んでいる前提です。未セットアップの場合は [README.md](./README.md) の「セットアップ手順」を先に行ってください。
 
 > [!note]
 > 2026-09-08: 本リポジトリはフォークだがPicketfence Labs内では新規Project扱いのため、`docs/decisions/`・`docs/troubleshooting-log.md`をリセットした（詳細はCLAUDE.md参照）。以下のGroup 1（Chat UI）のシナリオ・スクリーンショットはフォーク元での実機検証結果をそのまま引き継いでいる（機能に変更が無いため）が、本リポジトリでの実機再検証はまだ実施していない。Group 2の実装が一段落した段階で、Group 1・Group 2を通しで再検証する予定。
@@ -16,13 +16,13 @@
 
 ### テストユーザー
 
-Entra IDテナント上に作成済みの3ユーザーです。全員同じパスワード体系のダミーアカウントで、実在の人物とは無関係です。
+以下は既存デモの3ユーザー役割です。現在のアカウント状態と資格情報は管理者から安全に取得してください。本文に以前載っていたパスワードは除去しましたが、Git履歴からは消えていません。有効なら管理者が変更し、文書・画像・ログへ再掲しないでください。
 
 | ユーザー | ログインID (UPN) | パスワード | 割り当てられた権限 |
 |---|---|---|---|
-| ① ログイン不可の反例 | `demo-no-agent-access@hashipicketfence.onmicrosoft.com` | `08yv)Gg1*EwR2hO#*ItHsyXt` | なし（AIエージェントへのアクセス自体が未割当） |
-| ② Inquiryのみ | `demo-inquiry-only@hashipicketfence.onmicrosoft.com` | `V+F8(U*6wd4h))T(wM12kd0p` | 顧客検索（Customer Inquiry）のみ |
-| ③ 両方 | `demo-both-apis@hashipicketfence.onmicrosoft.com` | `e6(lx02!QzbgZ!&FtAQKL=mP` | 顧客検索＋顧客詳細（Customer Inquiry・Customer Details両方） |
+| ① ログイン不可の反例 | `demo-no-agent-access@hashipicketfence.onmicrosoft.com` | `SECRET_FROM_SECURE_STORE` | なし（AIエージェントへのアクセス自体が未割当） |
+| ② Inquiryのみ | `demo-inquiry-only@hashipicketfence.onmicrosoft.com` | `SECRET_FROM_SECURE_STORE` | 顧客検索（Customer Inquiry）のみ |
+| ③ 両方 | `demo-both-apis@hashipicketfence.onmicrosoft.com` | `SECRET_FROM_SECURE_STORE` | 顧客検索＋顧客詳細（Customer Inquiry・Customer Details両方） |
 
 複数ユーザーを行き来する場合、Entra IDのアカウント選択画面で「別のアカウントを使用する」を選ぶか、ブラウザのプライベートウィンドウを使うとスムーズです。
 
@@ -107,70 +107,97 @@ Entra IDテナント上に作成済みの3ユーザーです。全員同じパ�
 
 ---
 
-## Group 2: 保険業務API（ADFS/OIDC・レガシー認可ロジック）
+## 共通保険API: Entra系・ADFS系の受入計画
 
-> [!warning] 実装済み・実機検証は未実施
-> `insurance-ui`・`legacy-authz-adapter`カスタムプラグイン・6バックエンドサービスのdecK設定（`kong/insurance-<service>.yaml`）・insurance-ui用Route（`kong/insurance-ui-route.yaml`）は実装済み。ただしADFS実インフラ（`terraform/adfs_*.tf`等）が未構築のため、Kong Enterpriseライセンス配下での`deck gateway sync`＋ADFSログインを伴うエンドツーエンドの実機検証はまだ実施できていない（insurance-uiアプリ単体でのヘッダー解釈・API疎通ロジックの検証は`docs/troubleshooting-log.md`の2026-09-08エントリ参照）。以下はGroup 1と体裁を揃えるためのTESTING.md雛形で、ADFS実インフラ構築・実機検証完了後にスクリーンショット・実測結果で埋める。
+> [!warning] 新要件の受入計画。全ケース未実施
+> 旧ADFS専用UI・全6 API配線は現行コードとして存在しますが、この計画には未対応です。図のpassや旧単体テストを以下の合格に転記しないでください。先に[開発再開手順](docs/development-handoff.md)と[設計本文](docs/design-brief.md)を確認します。
 
-### アクセス先
+### 前提とfixture
 
-| 用途 | URL |
-|---|---|
-| Group 2専用UI（insurance-ui） | http://localhost:8000/insurance/（Group 1のChat UIとは別pathでKongの同一エントリポイントにマウント） |
-| Kong Admin API | http://localhost:8001/ |
+- 図版PR、設計PRを利用者がレビュー・mergeし、ADR-0003のPoC gateを確認する。
+- 実行commit、Gateway image digest、依存版、IdP/DB/Route設定の版を記録する。秘密値は記録しない。
+- テストユーザーはEntra側5論理ロール、ADFS側5業務グループに対応する架空アカウントを用意する。資格情報は管理者から安全に取得し、文書・画像・PRへ記載しない。
+- [レビューfixture](docs/design-fixtures/insurance-permissions.json)は設計表の機械可読版。稼働DBの状態や成功済みtest結果ではない。実装時のseedとの対応を検査する。
+- APIの実operation・fixtureを確認し、変更系の副作用が起きない読取りGETを使う。UIから任意URLを入力させない。
 
-### テストユーザー・グループ定義（マスタデータ、design-brief確定分）
+### 証拠の書式
 
-ADFS（Entra IDからフェデレーション）上のテストユーザーは、属性値がそのままグループIDとして発行される。5グループ全パターンを確認できるよう、各グループに最低1ユーザーを割り当てる想定（実際のUPN・パスワードは実装時にここへ追記する）。
+各ケースに`case_id / git_commit / image_digest / environment / steps / expected / actual / evidence / status`を残す。statusは未実施、pass、fail、blocked。認証・認可・Upstream到達の3列を分け、raw token/code/cookieを隠す。Headerを手で注入したUI単体試験は本物のIdP E2Eとして扱わない。
 
-| グループID | 想定ユーザー（UPN） | パスワード |
+### G1: 共通UIと認証セッション
+
+| ID | 操作 | 期待する結果 |
 |---|---|---|
-| `it` | 未定 | 未定 |
-| `sales` | 未定 | 未定 |
-| `new-business` | 未定 | 未定 |
-| `policy-admin` | 未定 | 未定 |
-| `claim` | 未定 | 未定 |
+| UI-01 | 未認証で`/insurance/`を開く | 図とAPI操作が見える。自動でIdPへ遷移せず、属性/過去の他人のrunは見えない |
+| UI-02 | Entra対象を選びログイン | 別画面でEntraへ。元の図を維持。callback/token検証後にAPI操作可能 |
+| UI-03 | ADFS対象を選びログイン | 別画面でADFSへ。Entraへfallbackしない |
+| UI-04 | 両IdPで順にログイン | 2つの状態が独立し、既存Chatのセッションも壊れない |
+| UI-05 | 有効セッションで同じAPIを呼ぶ | IdPへ再遷移したように表示しない |
+| UI-06 | popup拒否/別画面終了/opener切断 | 再開リンクまたは待機/unknown。図を消さず成功を捏造しない |
+| UI-07 | IdP内で拒否されcallbackへ戻らない | そのIdP標準画面にエラー。元UIは待機/未確認 |
+| UI-08 | 不正state/nonce/再使用code、誤callbackを試す | セッション確立しない。codeはログ/画面/履歴に残さない |
+| UI-09 | ADFSだけlogout | ADFS Cookieを無効化。Entraと既存Chatは維持。IdP全体SSO logoutと区別 |
+| UI-10 | 不正token/期限切れ/issuer・audience不一致 | APIは拒否。XHRをIdP HTMLへ転送しない。refresh/reloginは観測結果に応じ表示 |
 
-### グループ⇔APIアクセスマトリクス（design-brief確定、正本）
+### API経路とPath分離
 
-| グループ | product | customer | simulation | application | policy | claim |
-|---|---|---|---|---|---|---|
-| it | ○ | ○ | ○ | ○ | ○ | ○ |
-| sales | ○ | ○ | ○ | ○ | ○ | × |
-| new-business | ○ | ○ | ○ | ○ | ○ | × |
-| policy-admin | ○ | ○ | × | × | ○ | ○ |
-| claim | × | ○ | × | × | ○ | ○ |
+| ID | 操作 | 期待する結果 |
+|---|---|---|
+| ROUTE-01 | fixtureの7入口を確認 | Entra4・ADFS3だけが存在。6 backendに対応 |
+| ROUTE-02 | `/entra/customer`と`/adfs/customer`の同じfixture IDを読む | 認証経路は異なり、同じinsurance-customerへ到達 |
+| ROUTE-03 | 旧無接頭辞Path、`/adfs/product`、`/entra/policy`等を要求 | 対象外は404等で未ルーティング。別IdPへのfallbackや保護なし経路なし |
+| ROUTE-04 | `/customer-evil`、encoded separator、二重prefix、未知suffix | 誤マッチ・traversal・意図しないrewriteなし |
+| ROUTE-05 | 顧客ID suffixとqueryを付ける | Upstream `/customers/ITEM_ID`等へ1回だけ変換。query保持 |
+| ROUTE-06 | Entra token/CookieをADFS経路へ、逆方向も試す | 経路間の資格情報流用を拒否 |
+| ROUTE-07 | 初期許可外のPOST/PUT/DELETEを試す | UIにボタンなし。直呼びでも認可されず副作用なし |
 
-バックエンドは[kong-api-bundle-insurance](https://github.com/picketfence-labs/kong-api-bundle-insurance)のGHCR公開コンテナ6種をそのままpullして使うため、新規のテストデータ生成は発生しない（既存イメージ内蔵データをそのまま利用）。
+### 認可表を全セルで検証する
 
----
+表の正本は[設計本文](docs/design-brief.md)と対応するレビューfixture。ここに別の許可表を手書きしない。
 
-### シナリオ①: 未認証アクセスはADFSへリダイレクトされること（実装後に実施）
+- **AUTH-E-01〜20**: Entraの5ロール×4 API。設計fixtureの **15 allow/5 deny** に従う。
+- **AUTH-A-01〜15**: ADFSの5グループ×3 API。**13 allow/2 deny**。
+- **AUTH-E-EXTRA**: 許可Groupなし、未知Group、複数Group（OR条件案）、groups欠落/overageを試す。完全な属性がない時に許可へ倒さない。
+- 各allowは「照合に使った実属性」「一致条件」「認可allow」「Upstream受信」を記録する。
+- 各denyは「認証成功」「認可deny」「前段停止の証拠」を記録する。単にUIへ403が見えたことだけで停止担当を断定しない。
 
-1. Group 2専用UIを開く（未ログインなら自動的にADFSのログイン画面へ遷移することを確認）
-2. 直接のAPI応答が返らないこと（design-brief 5節1点目）を確認
+### G2/G3: 検証済み属性とPostgreSQL
 
-   ![スクリーンショット未取得](未定)
+| ID | 操作 | 期待する結果 |
+|---|---|---|
+| DB-01 | 各架空属性を持つ実IdPユーザーで認証 | 5 mappingと13許可行に従う。属性値とgroup_idが異なっていても正しく解決 |
+| DB-02 | 属性欠落/空/複数値/未知値/過大入力 | 明示した属性要件で拒否。既定グループを割り当てない |
+| DB-03 | callerからclaim/業務グループ/結果Headerを偽造 | 実際の検証済み属性・結果以外を採用しない。case/重複Headerも試す |
+| DB-04 | 許可行だけをseed transactionで変更 | decK側のallowed_groups変更なしで結果が変わる。revision/一致ruleが表示される |
+| DB-05 | SQL特殊文字を含む属性・未知API/method | SQL注入やcaller指定api_idでの許可拡大なし |
+| DB-06 | DB停止、timeout、schema不整合、接続権限失敗 | 503等の認可基盤障害。403の権限不足と区別し、Upstream未転送 |
+| DB-07 | 繰返し/並行要求、seed更新中の照会 | 接続解放、pool上限、timeout、同一snapshotが成立。半更新ルールで判定しない |
+| DB-08 | PluginユーザーでINSERT/UPDATE/DDLを試す | DBが拒否。必要SELECTだけ可能 |
 
-### シナリオ②〜⑥: グループ×API アクセスマトリクスの全パターン確認（実装後に実施）
+### G4: Header・観測・図
 
-5グループそれぞれでログインし、6API（product/customer/simulation/application/policy/claim）を順に呼び出して、上記マトリクス通りに許可/拒否されることを確認する。1グループ=1シナリオとして、Group 1と同様にログイン後の画面キャプチャ（自分のグループID表示＋各API呼び出し結果の一覧）を添付する。
+| ID | 操作 | 期待する結果 |
+|---|---|---|
+| OBS-01 | allow/denyを実行 | 正しいUI/Route/IdP/DB/APIのIDへ状態が対応。図の操作でAPIを再実行しない |
+| OBS-02 | OIDCが認証/標準認可で早期拒否 | 後段access処理が動かなくても観測可能、またはunknownと明示。偽の成功なし |
+| OBS-03 | 許可後のUpstream 500/接続拒否/timeout | authz allowとBackend障害を分離。証跡なしの到達はunknown |
+| OBS-04 | HeaderをUpstream側でも偽造する | Gateway結果と混同せず、予約response Headerを上書き/除去 |
+| OBS-05 | 別run、遅延、重複、順不同イベントを送る | 別runの表示を上書きしない。証拠順序がない時に因果関係を創作しない |
+| OBS-06 | 他利用者/未認証でrunを取得、ブラウザからイベント書込み | 拒否。run IDだけで属性や履歴を取得・偽造できない |
+| OBS-07 | collector停止/再起動/保持期限切れ | 認可は変更しない。欠落/履歴消失をunknownとして表示 |
+| OBS-08 | popup通知を偽造、origin/sourceを変更 | 通知だけで認証済みにしない。再検証が必要 |
+| OBS-09 | 図を再生成し素材hash/IDが変わる | adapter対応を検査し不整合を検出。Pagesへ実属性を送らない |
+| OBS-10 | 公開図・DOM・ログ・画像・履歴を点検 | token/code/cookie/secret/不要な個人属性なし |
 
-| シナリオ | グループ | 確認内容 | スクリーンショット |
-|---|---|---|---|
-| ② | `it` | 6API全て許可 | 未取得 |
-| ③ | `sales` | claimのみ拒否、他5つ許可 | 未取得 |
-| ④ | `new-business` | claimのみ拒否、他5つ許可 | 未取得 |
-| ⑤ | `policy-admin` | simulation/applicationが拒否、product/customer/policy/claimが許可 | 未取得 |
-| ⑥ | `claim` | product/simulation/applicationが拒否、customer/policy/claimが許可 | 未取得 |
+### 実基盤と回帰
 
-### その他の確認項目（design-brief 5節、画面操作以外での確認、実装後に実施）
+- INFRA-01: Entra DS同期とADFS claimを実token種別ごとに確認。Headerの見かけで代用しない。
+- INFRA-02: ブラウザとKongコンテナの両方からFQDN/TLS/discovery/JWKS/token endpoint到達を確認。NSG許可外からは拒否。
+- REG-01: 前半の既存Chatログイン拒否、Inquiryのみ、両Tool、logout、OBO、LLMの回帰を全て実施。今回の実測をfork元画像と分ける。
+- CLEANUP-01: 承認後の削除結果をAzure残存一覧とTerraform managed resourceで確認。data sourceが残ることとリソース残存は同義ではない。
 
-- **ネットワーク到達性**: Kong（ローカル）↔ADFS（Azure）間で、NSG許可リスト外のIPからはADFSエンドポイントに到達できないこと
-- **クレーム→ヘッダー変換**: `legacy-authz-adapter`がIDトークンのクレームから正しくグループIDを読み取り、`X-Group-Id`等のヘッダーに設定していること（Kongアクセスログまたはバックエンド側のリクエストログで確認）
-
----
+全セルやgateに失敗/blockedが残ればE2E完了にしない。資格情報が未変更の公開済みアカウントを使う前に、管理者へ変更確認を求める。
 
 ## 知見の記録
-- 設計判断（選択肢・判断基準・想定と実際の差分）: [docs/decisions/](./docs/decisions/)
-- 想定通りに動かなかったこと（漏れなく記録）: [docs/troubleshooting-log.md](./docs/troubleshooting-log.md)
+
+設計判断は[ADR](docs/decisions/)、想定外と実測は[troubleshooting-log](docs/troubleshooting-log.md)へ記録する。

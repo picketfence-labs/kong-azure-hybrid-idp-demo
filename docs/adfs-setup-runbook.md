@@ -1,98 +1,78 @@
-# ADFS手動設定手順（runbook）
+# Entra DS・ADFSの再構築と接続確認
 
-ADR-0001（[docs/decisions/0001-adfs-vm-provisioning-automation.md](./decisions/0001-adfs-vm-provisioning-automation.md)）で採択したハイブリッド方式のうち、Terraformの管理範囲外（VM作成・ドメイン参加まではTerraform、その先のADFSロールインストール〜OAuthサーバー設定）を人手で行う手順です。デモの一度きりの構築を想定しており、`terraform destroy`後に再構築する場合はこの手順も再実施します。
+対象は構築担当者。最新[設計](design-brief.md)と[ADR-0001](decisions/0001-adfs-vm-provisioning-automation.md)に従い、基盤/ドメイン参加をTerraform、ADFS設定を手動で行います。**本書は改訂後の検証計画であり、完走済み手順ではありません。**
 
-> [!warning] 未実施（terraformコード作成段階でのドラフト）
-> 本手順はまだ実機で実行していません。実際のADFSサーバーで手順通りに進まない箇所があれば、都度[docs/troubleshooting-log.md](./troubleshooting-log.md)に記録し、本ファイルも実際の手順に合わせて更新してください。特に7節（Claim Issuance Policy）はdocs/design-brief.md Group2「未検証・実装時に確認が必要な技術的前提」に明記されている通り、実機検証が必要です。
+## 0. 再開前のgate
 
-## 前提
-- `terraform apply`（`terraform/adfs_*.tf`・`terraform/insurance_*.tf`）が完了し、ADFS用VMがMicrosoft Entra Domain Servicesのドメインに参加済みであること
-- 以下の値を`terraform output`から取得済みであること:
-  ```bash
-  cd terraform
-  terraform output adfs_vm_public_ip
-  terraform output -json adfs_domain_admin_credentials
-  terraform output entra_domain_services_domain_name
-  ```
+- [ ] 設計PRをレビューし、対象commitを固定する。自己管理AD DSへ変更しない。
+- [ ] Azureの対象テナント・subscription、権限、予算、削除担当/期限を確認する。Entra系デモのテナントとADFS同期元を同一と決めつけない。
+- [ ] 以前のapply中断・削除記録を確認し、現在のAzure残存とTerraform stateを照合する。過去の削除記録を現在の実測としない。
+- [ ] Gatewayライセンス、image digest、`kong-ee`参照、必要ツールを用意する。公開履歴に載った資格情報が有効なら管理者に変更を依頼する。
+- [ ] terraform validate/planを確認し、**applyは別途承認を得て**実施する。provider登録やIdP設定変更も読取り作業ではない。
 
-## 1. RDP接続
-`adfs_vm_public_ip`宛にRDP接続する（NSGで許可した発信元IPからのみ到達可能、`nsg_allowed_source_cidr`参照）。ログインは`adfs_domain_admin_credentials`のドメインアカウント（`adfs-domain-admin@<domain>`）を使う。
+## 1. Entra DSとVMの準備
 
-```
-mstsc /v:<adfs_vm_public_ip>
-```
+1. Terraformの対象resourceと変更内容をレビューする。
+2. 承認後にEntra DS、ネットワーク、ADFS VM、ドメイン参加を構築する。
+3. Entra DSの健全性、DNS、時刻、ユーザー同期、VMドメイン参加を確認する。伝播待ちや再起動を成功扱いで飛ばさない。
+4. 必要なVM IP/FQDN、ドメイン名は既存Terraform outputsから取得する。資格情報は安全な保管先へ渡し、端末ログやPRへ出力しない。
 
-## 2. ADFSロールのインストール
-VM内のPowerShell（管理者）で実行:
-```powershell
-Install-WindowsFeature ADFS-Federation -IncludeManagementTools
-```
+VM作成・ドメイン参加までと、ADFSサービス設定の完了を別に記録します。Entra DSの構築時間・継続費用を見込んで作業枠を確保します。
 
-## 3. SSL証明書の準備
-社内CA・パブリックCAを持たないデモ環境のため、自己署名証明書で代替する:
-```powershell
-$cert = New-SelfSignedCertificate `
-  -DnsName "adfs.<entra_domain_services_domain_name>" `
-  -CertStoreLocation Cert:\LocalMachine\My
-$cert.Thumbprint
-```
-出力された拇印（Thumbprint）を次の手順で使う。
+## 2. ADFSサービス、証明書、名前解決
 
-## 4. ADFSファーム作成
-```powershell
-Install-AdfsFarm `
-  -CertificateThumbprint "<手順3の拇印>" `
-  -FederationServiceDisplayName "Kong ADFS Demo" `
-  -FederationServiceName "adfs.<entra_domain_services_domain_name>" `
-  -ServiceAccountCredential (Get-Credential) `
-  -OverwriteConfiguration
-```
-`ServiceAccountCredential`にはドメイン管理者アカウント（`adfs-domain-admin@<domain>`）を使う。本番運用ではグループ管理サービスアカウント（gMSA）の利用が推奨されるが、デモ規模のため簡略化している。
+1. 許可した管理端末からVMへ接続し、対象Windows Server版の手順でADFSロールを設定する。
+2. ADFS用FQDNに一致する証明書を用意する。ブラウザとKongコンテナの両方が信頼できるchainを設定する。検証回避を既定にしない。
+3. デモで自己署名証明書を使う場合は限定例外として承認し、両クライアントのtrust storeを準備する。`tls_verify=false`やブラウザ警告の無視だけで合格にしない。
+4. ADFSファーム/サービスアカウントは対象環境に合わせて設定する。既存ファームの上書きやdomain adminの常用を自動前提にしない。
+5. FQDNがブラウザ端末と**Kongコンテナ内部**から解決することを確認する。ホストOSのhosts編集だけではコンテナDNSの成功証拠にならない。
 
-## 5. 名前解決
-社内DNSサーバーを別途構築していない前提の簡易デモ構成のため、Kong実行環境（ローカル、docker-compose.ymlのkongコンテナのホスト）側の`hosts`ファイルに、手順3/4で使ったFQDN（`adfs.<entra_domain_services_domain_name>`）とADFS VMのパブリックIP（`adfs_vm_public_ip`）の対応を追加する。
+正確なPowerShell引数、サービスアカウント方式、証明書配備は実機条件で確認して記録します。旧ドラフトの`OverwriteConfiguration`を無条件に再実行しないでください。
 
-## 6. OAuthサーバー機能の有効化（Application Group、KongをRelying Partyとして登録）
-ADFS管理コンソール（`AdfsManagement.msc`）→「Application Groups」→「Add Application Group」から進める（PowerShellの`Add-AdfsApplicationGroup`系コマンドレットでも同等の設定は可能だが、初回はGUIの方がパラメータの対応関係を把握しやすい）:
+## 3. Application GroupとAPI資源
 
-1. テンプレートは「Server application」を選択（認可コードフロー＋クライアントシークレットに対応するテンプレート）
-2. Client Identifier（`client_id`）が自動生成される。控えておく → `DECK_ADFS_CLIENT_ID`
-3. Redirect URIに、Kong側の各Routeの`redirect_uri`を**全て**登録する:
-   - `kong/insurance-ui-route.yaml`: `http://localhost:8000/insurance/login/callback`
-4. 「Generate a shared secret」でClient Secretを生成・控える → `DECK_ADFS_CLIENT_SECRET`
-5. 完了後、「Server application」の「Issuance Transform Rules」を次節で編集する
+Microsoftの[Server application accessing a Web API](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/development/msal/adfs-msal-web-app-web-api)構成を参考に、**Server application（Kongのclient）とWeb API（resource/audience）を分けて**登録します。SAML用Relying Party設定と混同しないでください。
 
-## 7. Claim Issuance Policyの設定（要検証）
-design-brief通り、Entra IDのテストユーザーに設定した`department`属性（`terraform/insurance_users.tf`参照）の値（グループID: `it`/`sales`/`new-business`/`policy-admin`/`claim`）を、そのままOIDCトークンのクレームとして発行する必要がある。
+1. Application Groupを作成し、Server applicationのclient ID/資格情報とWeb API identifierを記録する。secretは安全な保管先へ保存する。
+2. 設計PRで確定した`DEMO_ORIGIN`とcallback Pathを完全一致で登録する。現在の提案は`DEMO_ORIGIN/adfs/auth/callback`。旧`/insurance/login/callback`を残す必要があるかは移行計画で判断する。
+3. 必要なscope/resource/audienceと、対象デモユーザーだけに許可するADFS側policyを確認する。公式サンプルの全員許可を本デモへ無条件コピーしない。
+4. Web API側のclaim規則と、どのtokenへ必要属性が出るかを確認する。Server applicationに全claim規則があると仮定しない。
+5. Entra系の新しい保険API用設定は別のclient/resource/必要権限として整理する。既存Chat/OBOのclient/audienceを黙って変更しない。
 
-手順6で作成したApplication Groupの「Web API」（または「Server application」に紐づくRelying Party相当の設定）の「Issuance Transform Rules」に、以下のようなルールを追加する想定:
-- ルールテンプレート「Send LDAP Attributes as Claims」
-- Attribute Store: `Active Directory`
-- LDAP Attribute: `Department`
-- Outgoing Claim Type: `${{ env "DECK_ADFS_GROUP_CLAIM_NAME" }}`で指定する予定のクレーム名（`kong/insurance-*.yaml`・`kong/insurance-ui-route.yaml`の`upstream_headers`参照）
+## 4. 属性同期・claim・tokenの検証
 
-**要検証事項**（docs/design-brief.md Group2「未検証・実装時に確認が必要な技術的前提」より）:
-- Entra IDの`department`属性が、Microsoft Entra Domain Services経由でオンプレミス相当のAD属性`department`として実際に同期されるか
-- ADFSがこのAD属性をLDAP Attribute Storeとして正しく読み取れるか
-- 発行されたクレームが、Kongの`openid-connect`プラグインの`upstream_headers`で期待通り拾えるか（ID tokenのクレームとして現れるか、userinfoエンドポイント経由になるか）
+設計案では`department`に`D-IT`等の架空値を置きます。ADFSが業務グループへ正規化するのではなく、PostgreSQLで対応を解決します。
 
-確認できた実際の挙動は、本ファイルおよび[docs/troubleshooting-log.md](./troubleshooting-log.md)に追記すること。
+- [ ] 元ユーザーの属性がEntra DSに同期されることを確認する。
+- [ ] ADFSが該当属性を読み、必要なclaimを発行できることを確認する。
+- [ ] issuer、audience、署名、期限、scope、claim名・型・値の所在をID token/access tokenで分けて確認する。raw tokenは保存せず、値をマスクした結果だけ記録する。
+- [ ] API側が必要とするaccess tokenを取得・検証できる。ID tokenをBearerとして流用しない。
+- [ ] OIDC後のカスタムPluginが本当に検証済み属性を読むことを、G2の偽造Header負例で証明する。
 
-## 8. 疎通確認
-- 作業端末（`nsg_allowed_source_cidr`で許可した発信元IP）から`https://adfs.<entra_domain_services_domain_name>/adfs/.well-known/openid-configuration`にアクセスでき、OIDC discoveryドキュメントが返ること
-- Kong実行環境（ローカル）からも同様にアクセスできること（`docker exec kong ...`で疎通確認、docs/troubleshooting-log.mdの既存エントリと同じ手法が使える）
-- 許可リスト外のIPからは到達できないこと（NSGの効果確認、design-brief 検証方法4点目）
+同期やclaim発行に失敗したらgateをblockedにし、別属性へ変える案をADRでレビューします。ADFSで`D-IT → it`へ変換してDB照会の要件を消さないでください。
 
-## 9. Kong側への反映
-疎通確認後、以下の環境変数をKong実行環境に設定し、`deck gateway sync`でGroup 2のRoute群を反映する（README.md「Group 2専用UI（insurance-ui）」節、`kong/insurance-ui-route.yaml`・`kong/insurance-<service>.yaml`参照）:
+## 5. Kongとブラウザの疎通
 
-```bash
-export DECK_ADFS_ISSUER="https://adfs.<entra_domain_services_domain_name>/adfs"
-export DECK_ADFS_CLIENT_ID="<手順6のClient Identifier>"
-export DECK_ADFS_CLIENT_SECRET="<手順6のClient Secret>"
-export DECK_ADFS_GROUP_CLAIM_NAME="<手順7で設定したOutgoing Claim Type>"
-export DECK_ADFS_SESSION_SECRET=$(openssl rand -base64 32)
+- [ ] NSG許可元からブラウザとKongがdiscovery/JWKS/token endpointへ到達し、TLSを検証できる。
+- [ ] NSG許可外からADFSへ到達しない。RDPなど管理経路と公開OIDCを別に点検する。
+- [ ] `/adfs/auth/start`の別画面redirect→callback→セッション確立をG1で確認する。
+- [ ] CookieのPath/name/secretをEntra系・既存Chatから分離し、両IdPを同時利用できる。
+- [ ] IdPエラー画面、callback未帰還、期限切れ、logoutを試験する。
 
-deck gateway sync kong/insurance-ui-route.yaml kong/insurance-product.yaml kong/insurance-customer.yaml \
-  kong/insurance-simulation.yaml kong/insurance-application.yaml kong/insurance-policy.yaml kong/insurance-claim.yaml
-```
+## 6. 認可DBとRouteの反映
+
+1. G3を通過したライブラリ/SQL方式で認可DBを準備する。`kong-db`の内部テーブルへ業務マスタを入れない。
+2. レビューfixtureに対応する5 mapping行・13 GET許可行・revisionをtransactionでseedする。
+3. 完成した構成全体をdecKでvalidate/diffする。既存Chat/OBO/LLMを含むinventoryを対象とし、Group 2の一部ファイルだけを全状態としてsyncしない。
+4. 正式callback、issuer、audience、secret、claim名を環境の実値に合わせる。`.env`等の非追跡設定を使う。
+5. **承認後**に反映し、7入口・6 Service・customer共有・旧Path廃止を確認する。設計未対応の現行YAMLをこの手順でそのまま配備しない。
+6. [TESTING.md](../TESTING.md)のG1〜G4、35セル、対象外経路、Group 1回帰を実施する。
+
+## 7. 終了・削除・証拠
+
+- [ ] 検証結果、失敗、未確認、対象commit/image digest、費用の確認先を残す。成功したテストだけを抜き出さない。
+- [ ] デモ終了後、利用者承認を得て今回作成した資源だけを削除する。
+- [ ] Azure残存、Terraformのmanaged resources、公開IP/DNS/証明書、IdP登録、認可DB volumeの扱いを確認する。既存Group 1資源を誤削除しない。
+- [ ] stateにdata sourceだけが残る状態を「stateが空」と表現しない。実測と未確認を分ける。
+
+想定外は[troubleshooting-log](troubleshooting-log.md)、設計変更は[ADR](decisions/)へその場で記録します。

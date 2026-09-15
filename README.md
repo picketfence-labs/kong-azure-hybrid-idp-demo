@@ -1,9 +1,15 @@
-# Kong Gateway — Entra ID OIDC/OBOとADFS/OIDCが共存するハイブリッドIdPデモ
+# Kong Gateway: Entra ID OIDC/OBOとADFS/OIDCが共存するハイブリッドIdPデモ
+
+> [!warning] 2026-09-14: 要件更新・開発停止中
+> 共通UI/1 DP/6 APIの図はレビュー済み。Entra系4入口・ADFS系3入口（customer共有）、PostgreSQL認可マスタ、別画面ログインは目標構成で、現行アプリ/YAMLは未対応です。まず[最新設計](docs/design-brief.md)と[開発再開パッケージ](docs/development-handoff.md)を確認してください。図のpassはE2E合格ではありません。
+
+[![目標構成](docs/assets/hybrid-idp/hybrid-idp-demo.png)](https://picketfence-labs.github.io/diagrams/5ecfdbb4c0e9/)
+
 
 [kong-azure-obo-demo](https://github.com/picketfence-labs/kong-azure-obo-demo)をフォークして作成した、**2つの異なる認証経路が共存するデモ環境**です:
 
 - **Group 1**（フォーク元、変更なし）: Chat AIエージェントからMCP経由でバックエンドAPIへアクセスするデモ。「エージェントとしてログインする権限」と「個々のAPI（Tool）を実行する権限」を分離し、Kong Gateway 3.16のOpenID ConnectプラグインのOBO（On-Behalf-Of）機能でトークン交換、AI MCP ProxyのACL機能でTool単位の認可を行う一連の流れを実地検証します
-- **Group 2（ADFSグループ、新規）**: Entra IDからフェデレーションしたADFSとOIDCで連携し、レガシーサービス側の認可ロジック（属性からグループ情報を導出しAPIごとのアクセス可否を判定する）をKongのカスタムプラグインとして再現するデモです。バックエンドは[kong-api-bundle-insurance](https://github.com/picketfence-labs/kong-api-bundle-insurance)の保険業務API（6サービス）をそのまま利用します
+- **Group 2（ADFSグループ、新規）**: Entra IDからフェデレーションしたADFSとOIDCで連携し、レガシーサービス側の認可ロジック（属性からグループ情報を導出しAPIごとのアクセス可否を判定する）をKongのカスタムプラグインとして再現するデモです。旧実装は6 API全てをADFS側へ置いていました。最新要件ではpolicy/claimと共有customerがADFS側、product/simulation/applicationと共有customerがEntra側です
 
 **Konnectは使用しません**（Kong Gateway単体、Postgres backed）。
 
@@ -11,7 +17,7 @@
 
 ![Chat UI画面](./docs/testing-images/02-chat-inquiry-only-details-denied.png)
 
-**実際に動かして動作確認したい方は [TESTING.md](./TESTING.md) を参照してください**（スクリーンショット付きの検証手順。Group 1は実機検証済み、Group 2は実装完了後に同じ体裁で追記します）。**OBO（On-Behalf-Of）によるトークン交換の仕組みを図解付きで理解したい方は [docs/OBO.md](./docs/OBO.md) を参照してください**。Group 2のUI（insurance-ui）のセットアップ手順は下記「Group 2専用UI（insurance-ui）」に追記済みです。ADFS実インフラ構築後のKong側`deck sync`手順は別途追記します。
+**実際に動かして動作確認したい方は [TESTING.md](./TESTING.md) を参照してください**（スクリーンショット付きの検証手順。Group 1はfork元の検証記録を継承、本repoの新要件E2Eは未実施）。**OBO（On-Behalf-Of）によるトークン交換の仕組みを図解付きで理解したい方は [docs/OBO.md](./docs/OBO.md) を参照してください**。Group 2のUI（insurance-ui）のセットアップ手順は下記「Group 2専用UI（insurance-ui）」に追記済みです。ADFS実インフラ構築後のKong側`deck sync`手順は別途追記します。
 
 ## 全体アーキテクチャ
 
@@ -24,7 +30,10 @@ Kong Gatewayが3系統のRoute/Serviceをフロントします（詳細は [docs
 
 Chat UI（Next.js）はKongの認証を全面的に信頼し、独自のOAuthクライアント実装（Auth.js等）を持ちません。
 
-### Group 2（ADFSグループ、新規）
+### Group 2（以下3項目は旧実装の説明）
+
+最新の認可マスタと経路分担はDesign Briefを正とします。
+
 1. **IdP接続**: `openid-connect`プラグインがADFSのOIDCエンドポイント（Entra IDからフェデレーション）に対し認可コードフローを実施（OBOなし）
 2. **認可ロジック**: カスタムLuaプラグインがIDトークンのクレームからグループを確定し、Service単位の許可リストと照合してアクセス可否を判定
 3. **バックエンド**: `kong-api-bundle-insurance`のGHCR公開コンテナ6種
@@ -124,7 +133,9 @@ bun install
 bun run dev   # http://localhost:3000 単体では認証ヘッダーが無いため、Kong経由（http://localhost:8000）でのアクセスが前提
 ```
 
-### Group 2専用UI（insurance-ui）
+### 旧Group 2専用UI（現行コード参照用、再開時は置換対象）
+
+> 以下は旧構成です。新要件のセットアップとして実行せず、[開発再開手順](docs/development-handoff.md)と[runbook](docs/adfs-setup-runbook.md)に従ってください。
 
 `services/insurance-ui`（Next.js App Router）。design-brief Group2「3. アーキテクチャ」の通り、Chat UIと同じ方針でOAuthクライアント実装を持たず、`kong/insurance-ui-route.yaml`のopenid-connectプラグイン（ADFS向け、認可コードフロー＋セッション、OBOなし）が認証・ログアウトを担う。Next.js側はKongが転送するヘッダーを信頼するだけ:
 
@@ -142,7 +153,9 @@ bun run dev   # http://localhost:3000 単体では認証ヘッダーが無いた
 
 Kong側への反映（`kong/insurance-ui-route.yaml`・`kong/insurance-<service>.yaml`）は、ADFS実インフラ（下記「ADFS/Entra Domain Servicesインフラ」）が発行する`DECK_ADFS_ISSUER`/`DECK_ADFS_CLIENT_ID`/`DECK_ADFS_CLIENT_SECRET`/`DECK_ADFS_GROUP_CLAIM_NAME`と、decK専用の`DECK_ADFS_SESSION_SECRET`（`openssl rand -base64 32`等で生成、Terraform outputではない）が揃ってから行う。
 
-### ADFS/Entra Domain Servicesインフラ（Group 2、picketfence自身のAzure環境）
+### ADFS/Entra Domain Servicesインフラ（旧構成の参考）
+
+> 新しいcallback、claim、API資源の登録と承認gateは[改訂runbook](docs/adfs-setup-runbook.md)を正とします。
 
 `terraform/adfs_*.tf`（ネットワーク・Microsoft Entra Domain Services・ADFS VM）・`terraform/insurance_*.tf`（5グループのEntra IDテストユーザー）が、design-brief Group2「3. アーキテクチャ」のADFS/Entra側インフラを担う。ADFSロールのインストール・ファーム構築・OAuthサーバー設定（Application Group/Relying Party登録、Claim Issuance Policy）はTerraformの管理範囲外とし、[docs/adfs-setup-runbook.md](./docs/adfs-setup-runbook.md)に従って手動で行う（自動化度合いの判断根拠は[docs/decisions/0001-adfs-vm-provisioning-automation.md](./docs/decisions/0001-adfs-vm-provisioning-automation.md)参照）。
 
@@ -166,6 +179,8 @@ Kong側への反映（`kong/insurance-ui-route.yaml`・`kong/insurance-<service>
 - 想定通りに動かなかったこと（漏れなく記録）: [docs/troubleshooting-log.md](./docs/troubleshooting-log.md)
 
 ## クリーンアップ
+
+> 以下の旧手順を新要件で無条件に実行しないでください。対象資源を明示し、既存Group 1資源を除外し、利用者承認と[改訂runbook](docs/adfs-setup-runbook.md)の残存確認に従ってください。
 ```bash
 docker compose down -v
 terraform destroy
