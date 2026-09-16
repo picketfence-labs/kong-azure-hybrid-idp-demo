@@ -11,9 +11,9 @@
 
 中断ログPR #8、図版PR #9、設計PR #10、事前監査PR #11、P0選定PR #12はmainへmerge済みです。P1はPR #12の選定結果を土台にしています。
 
-## 変えてはいけない要件
+## ADR-0005の決定後も維持する要件
 
-Entra DS＋ADFS、共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend/別Path、別画面IdP、M2のDBマスタ、簡潔なカスタム認可、既存Chat/OBO/Tool ACL/LLMの機能維持。図からUIを省略しない。IdP内部状態やAPI到達を推測で成功扱いしない。
+Entra DS＋ADFSの組合せだけは[ADR-0005](decisions/0005-adfs-directory-platform.md)で再判断する。共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend/別Path、別画面IdP、M2のDBマスタ、簡潔なカスタム認可、既存Chat/OBO/Tool ACL/LLMの機能は維持する。図からUIを省略しない。IdP内部状態やAPI到達を推測で成功扱いしない。
 
 ## 現状と最初のgate
 
@@ -23,7 +23,7 @@ Entra DS＋ADFS、共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend
 | `handler.lua` / `authz.lua` | Header＋known_groups/allowed_groups。DBなし | 検証済み属性の安全な入力を証明してからDB化 |
 | `insurance-ui` | 公開shell、別画面ログイン、経路別status/logout。旧token relayは削除 | 実GatewayでCookie分離、両IdP同時利用、logout分離を確認 |
 | 図 | 改訂3、quality 9/9、ブラウザ検証済み | 実イベントadapterは未実装 |
-| 基盤 | 2026-09-15にAzure基盤を全体再構築。Entra DS稼働、ADFS VMドメイン参加、最終plan no-op。2026-09-16にAD FSロール、DNS、OU、gMSAまで作成 | 修正版runbook Section 2のdeep preflight後、TLS証明書と未構成のAD FSファーム作成を再開 |
+| 基盤 | 2026-09-15にAzure基盤を全体再構築。Entra DS稼働、ADFS VMドメイン参加、最終plan no-op。2026-09-16にAD FSロール、DNS、OU、gMSA、TLS証明書まで作成。ファームは未構成 | Entra DSがDomain Admin権限を提供しないため、[ADR-0005](decisions/0005-adfs-directory-platform.md)でディレクトリ基盤を再判断。決定まで`-Apply`を再実行しない |
 
 - [ ] デモ資格情報を確認。公開履歴に記載された有効パスワードは管理者が変更する。このPRは本文をプレースホルダー化するだけで、履歴削除/失効はしない。
 - [ ] Gatewayを起動する直前に、ライセンスを確認する。対象image source revisionは`7d95f6d021d05405e4c47244049ad21d64619201`と確認済み。
@@ -52,12 +52,12 @@ Terraform再構築は、差分レビューと利用者の明示承認後に実�
 - VNetのDNSをEntra DSのDC IPへ向ける構成を追加した。VM再起動後、DNS SRV解決とDC discoveryを確認した。
 - Entra DS有効化前に作成したcloud-onlyユーザーはNTLM/Kerberos用ハッシュを持たなかった。Group 2用6ユーザーのパスワードをin-place更新し、今後はEntra DS完了後にユーザーを作成して15分待つ依存順序へ変更した。
 - ADFS VMは`PartOfDomain=True`、対象ドメイン一致、secure channel `NERR_Success`。最終の通常planは`No changes`だった。
-- AD FSロールと管理ツール、DNS Aレコード、サービスアカウント用OU、gMSAは作成済み。`adfssrv`は`Stopped`、`Manual`で、ファームは未構成と実測した。TLS証明書、ファーム、Application Group、OIDC設定は未実施。Windows PowerShell 5.1実機監査を反映した[ADFS runbook](adfs-setup-runbook.md)のSection 2でdeep preflightから再開する。
+- AD FSロールと管理ツール、DNS Aレコード、サービスアカウント用OU、gMSA、デモ用TLS証明書は作成済み。`adfssrv`は`Stopped`、`Manual`で、ファームは未構成と実測した。`adfs-domain-admin`は`AAD DC Administrators`だが`Domain Admins`ではなく、`Test-AdfsFarmInstallation`が権限不足で停止した。Entra Domain ServicesはDomain Admin権限を提供しないため、[ADR-0005](decisions/0005-adfs-directory-platform.md)の決定まで再実行しない。
 - Entra Domain Services、ADFS VM、Azure OpenAIなどが稼働中で継続コストが発生する。デモ終了後は利用者承認を得て削除する。
 
 ## 既存実装と追加要件の差分
 
-2026-09-15に、PR #7までの実装とADR-0002の追加要件を比較した。追加作業の中心は、RouteのIdP分割、ADFS認可のDB化、共通UIへの変更、実イベントの表示である。既存の6バックエンド、共通Kong data plane、Entra DSとADFSの基盤コードは土台として残す。
+2026-09-15に、PR #7までの実装とADR-0002の追加要件を比較した。追加作業の中心は、RouteのIdP分割、ADFS認可のDB化、共通UIへの変更、実イベントの表示である。既存の6バックエンドと共通Kong data planeは土台として残す。Entra DSとADFSの基盤コードはADR-0005の決定まで再利用を確定しない。
 
 | 対象 | 現行 | 追加要件 | 扱い |
 |---|---|---|---|
@@ -69,7 +69,7 @@ Terraform再構築は、差分レビューと利用者の明示承認後に実�
 | `known_groups`と`allowed_groups` | decKとPlugin設定が認可の正本 | PostgreSQLをADFS認可の唯一の正本にする | **廃止対象**。移行後は並行保持しない |
 | `insurance-ui`のNext.js基盤 | ADFS専用画面、6ボタン、Bearer token relay、`response.ok`判定 | 共通図、IdP別操作、保護された履歴、認証・認可・到達の分離表示 | **ビルド基盤を再利用、画面とサーバー処理を作り替え** |
 | Archify素材 | 目標図、安定ID、イベント対応案を作成済み | 実イベントを原本とは別のadapterで表示 | **素材を再利用、adapterを追加** |
-| `terraform/adfs_*.tf` | Entra DS、ADFS VM、network、domain join | Entra DSとADFSを維持 | **原則再利用**。再構築前にplanと対象資源を再確認 |
+| `terraform/adfs_*.tf` | Entra DS、ADFS VM、network、domain join | Entra DSとADFS維持は権限モデル不成立 | **設計へ戻す**。[ADR-0005](decisions/0005-adfs-directory-platform.md)の決定後に再利用、変更、撤去を判断 |
 | `terraform/insurance_users.tf` | `department`に業務グループIDを直接設定 | ADFS属性からDBの業務グループへ変換。Entra側Security Group条件も追加 | **ユーザー作成骨格を再利用**。属性値の変更とGroup割当用リソースの追加が必要 |
 | Group 1のChat/OBO/MCP/LLM | 実装済み | 機能を維持 | **変更対象外**。統合時に回帰試験だけ行う |
 
@@ -77,7 +77,7 @@ Terraform再構築は、差分レビューと利用者の明示承認後に実�
 
 - `services/chat-ui`、`kong/login-route.yaml`、`kong/mcp-route.yaml`、`kong/llm-route.yaml`
 - 保険APIのコンテナイメージとアプリケーション実装
-- Entra DSまたはADFSを別製品へ置き換える設計
+- Entra DSまたはADFSを置き換える実装。設計比較はADR-0005で行う
 - ADFSへのOBO追加
 - 複数グループ、deny優先、cache、再試行、汎用ルールエンジン、認可マスタ管理UI
 - Azure資源の作成、削除、ADFS設定、decK sync。各操作は実行前に別途承認を得る

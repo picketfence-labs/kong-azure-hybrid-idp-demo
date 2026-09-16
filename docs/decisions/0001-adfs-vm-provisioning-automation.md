@@ -38,10 +38,14 @@ design-brief Group2「3. アーキテクチャ」が明確に「TerraformでADFS
 利用者確認の結果、Option Bを採択（2026-09-08）。デモ環境は「一度構築して検証し、終わったら`terraform destroy`する」想定であり繰り返し構築する運用ではないため、完全なIaC化（Option A）で得られる再現性の価値よりも、ADFSファーム構築特有のタイミング依存処理（ドメイン参加の伝播待ち・証明書生成・DNS解決）を対話的に進められる初回構築時のデバッグしやすさを優先した。design-brief「将来の要件」（Konnectへの移行可能性、他IdP追加）とも矛盾しない（ADFSサーバー自体の構成方法は将来要件に影響しないローカルな実装詳細のため）。
 
 ## 想定していたこと vs 実際どうだったか
-（ADFS実インフラ構築・runbook実行後に追記）
+
+TerraformによるEntra Domain Services、VM、ドメイン参加と、RDPによるAD FSロール導入までは責務分担どおりに実行できた。DNS、カスタムOU、gMSA、TLS証明書も手動スクリプトで作成した。
+
+一方、`Test-AdfsFarmInstallation`はDomain Administrator資格情報、またはDomain Administratorが準備した`AdminConfiguration`を要求して停止した。Entra Domain Servicesは利用者へDomain Admin権限を提供しないため、自動化度合いではなくディレクトリ基盤の前提が成立していなかった。詳細と次の選択肢は[ADR-0005](0005-adfs-directory-platform.md)で管理する。
 
 ## 影響・トレードオフ
-（決定後に追記）
+
+ハイブリッド方式は各段階の出力を確認できたため、ファーム作成前に権限不足を検出し、`OverwriteConfiguration`やサービス削除を行わず停止できた。ただし、対話実行だけではDomain Admin要件を回避できない。ADR-0005の決定までrunbookの`-Apply`を再実行しない。
 
 ## 関連する決定
-なし
+- [ADR-0005](0005-adfs-directory-platform.md): AD FSを構成できるディレクトリ基盤を再判断する。

@@ -13,7 +13,7 @@
 - IdPログインは別画面で開き、図を表示した画面を維持する。Group 1はEntra ID、Group 2はADFSの標準画面。
 - UIは判定入力・条件・結果、実行経路と停止地点を表示する。
 - カスタム認可は短い判定処理に保ち、UI/図の制御を入れない。
-- Entra DS＋ADFS、既存OBO/Tool ACLを維持する（本図では詳細を省略）。
+- この図はEntra DS＋ADFSを維持する設計時点の成果物。実機で権限モデルが成立しないと判明したため、[ADR-0005](../../decisions/0005-adfs-directory-platform.md)の決定後にIdP部分を更新する。既存OBO/Tool ACLは維持する（本図では詳細を省略）。
 - **改訂2**: product/simulation/applicationはEntra、policy/claimはADFS、customerは別Pathで双方から同じAPIへ。全6 APIをAzure外・Kong外の共通ホスティングに配置する。
 - Kongの2処理系を**1つのData Plane**で扱う。従来の「Group 2で全6 API」前提と5グループ×6APIテスト表は設計更新で再編する。
 
@@ -47,7 +47,7 @@ customerの `/entra/customer/*` と `/adfs/customer/*` はP0で採用した公�
 
 凍結済みの改訂3 HTMLと再生成用JSONには、P0前の「説明用のPath案」という注記が残っています。図本体を手編集せず、実装では[Design Brief](../../design-brief.md)と[認可fixture](../../design-fixtures/insurance-permissions.json)を正本にします。図内注記の更新は、Archifyで図を再生成してreceiptを更新する別PRで行います。
 
-①はUIから対象Pathへの要求、②は未認証時にKongが返すリダイレクトにブラウザが従ってIdPへ進む処理、③はIdP認証後に別画面ブラウザが認可コード付きでKong callbackへ戻る処理です。②③の線はブラウザ経由の論理経路であり、サーバー同士のリダイレクトやIdPからKongへの直接通知ではありません。callback後のcode→token交換・token検証はKongが行い、認可後にAPIへ転送します。有効なセッションの再利用時は②③を省略します。**改訂3では共通のTest UIノードを復元**し、Entra系とADFS系Routeへ明示接続。図の画面を維持し、IdPログインだけ別画面で行います。OBO/MCP/LLMの詳細は本図では省略し、既存機能を削除する意図はありません。Entra DSへの同期は事前準備です。図のEntra IDとEntra DSの元テナントが同一であるとは断定しません。
+①はUIから対象Pathへの要求、②は未認証時にKongが返すリダイレクトにブラウザが従ってIdPへ進む処理、③はIdP認証後に別画面ブラウザが認可コード付きでKong callbackへ戻る処理です。②③の線はブラウザ経由の論理経路であり、サーバー同士のリダイレクトやIdPからKongへの直接通知ではありません。callback後のcode→token交換・token検証はKongが行い、認可後にAPIへ転送します。有効なセッションの再利用時は②③を省略します。**改訂3では共通のTest UIノードを復元**し、Entra系とADFS系Routeへ明示接続。図の画面を維持し、IdPログインだけ別画面で行います。OBO/MCP/LLMの詳細は本図では省略し、既存機能を削除する意図はありません。Entra DSへの同期はこの図を作成した時点の前提であり、ADR-0005の決定後に更新します。図のEntra IDとEntra DSの元テナントが同一であるとは断定しません。
 
 章選択、focus、path、theme、exportは構成説明のViewer操作です。自動実トレースではありません。固定Viewer UIとHTML langはArchifyの英語fallback、図の本文は日本語です。
 
