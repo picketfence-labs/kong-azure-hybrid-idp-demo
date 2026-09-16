@@ -244,3 +244,13 @@
 - **実際どうだったか**: `gh pr create`はhead/base SHAを解決できず、commit差分がないと応答した。remoteを確認するとbranchは`origin`に存在したが、`gh repo view`はfork元の`upstream`を選択していた。
 - **原因**: このworktreeには`origin`と`upstream`があり、repositoryを明示しない`gh`がPR対象として`upstream`を選んだ。
 - **対処・回避方法**: 今回のPR作成では`--repo picketfence-labs/kong-azure-hybrid-idp-demo`を明示する。git remote設定は変更しない。
+
+## 2026-09-16 AD FSロール導入後の再実行を既存ファームと誤判定
+
+- **何を期待していたか**: `Configure-AdfsDemoFarm.ps1 -Apply`が必要なWindows機能を導入し、同じ実行または安全な再実行でAD FSファームの作成まで進むこと。
+- **実際どうだったか**: 最初の実行はローカル管理者で開始され、Windows機能の導入後にドメイン資格情報エラーで停止した。ドメイン管理者の昇格済みセッションから再実行すると、`adfssrv`サービスの存在だけを根拠に`The AD FS service already exists`として停止した。
+- **原因**: AD FSロールの導入とファームの構成は別工程であり、ロールを導入した時点でファーム未構成でも`adfssrv`サービスが作成される。スクリプトの既存ファーム判定がサービスの存在だけを確認していたため、正常な中断再開状態を誤検出した。Runbookにもスクリプト転送、ドメインユーザー確認、Windows PowerShell 5.1の昇格確認が不足していた。
+- **実測**: Azure VMの読み取り確認では、`adfssrv`は`Stopped`、`Manual`だった。`Get-AdfsProperties`と`Get-AdfsFarmInformation`は`net.tcp://localhost:1500/policy`への接続を拒否され、`FarmConfigured=False`だった。既存ファームではなく、ロールだけが導入された状態と確認した。
+- **追加確認**: 構成完了レジストリ値だけを読むAzure Run Commandは完了したが、実行クライアントへ標準出力が返らなかった。値を推測せず、この追加確認は判定根拠に含めていない。
+- **対処・回避方法**: サービス削除や`OverwriteConfiguration`は使わない。構成完了フラグと`Get-AdfsProperties`で既存ファームを検出し、`Stopped`、`Manual`のロール導入済み状態だけ再開を許可する。その他の判定不能なサービス状態は停止する。適用前にWindows PowerShell 5.1、管理者昇格、ドメインユーザーUPNも検証する。
+- **Runbook修正**: `C:\KongDemo\adfs`はTerraformで作成されないことを明記し、レビュー済みcommitからの取得コマンドを追加した。Windowsへのサインインをローカル管理者からドメイン管理者へ切り替える手順と、`whoami.exe /upn`による確認も追加した。
