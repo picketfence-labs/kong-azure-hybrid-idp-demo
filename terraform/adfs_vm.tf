@@ -42,8 +42,8 @@ resource "azurerm_windows_virtual_machine" "adfs" {
   location            = azurerm_resource_group.adfs.location
   size                = var.adfs_vm_size
   # ローカルWindows管理者アカウント。ドメイン参加後のADFS設定作業（docs/adfs-setup-runbook.md）は
-  # azuread_user.domain_join_admin（ドメインアカウント）で行うため、このアカウントは初期構築・
-  # トラブル時の復旧用。
+  # local.domain_admin_username（AD DS側ドメインアカウント、terraform/adfs_domain_controller.tf
+  # のcreate_domain_objects拡張機能が作成）で行うため、このアカウントは初期構築・トラブル時の復旧用。
   admin_username = var.adfs_vm_admin_username
   admin_password = random_password.adfs_vm_admin.result
 
@@ -78,8 +78,8 @@ resource "azurerm_virtual_machine_extension" "domain_join" {
   type_handler_version = "1.3"
 
   settings = jsonencode({
-    Name    = var.entra_domain_services_domain_name
-    User    = azuread_user.domain_join_admin.user_principal_name
+    Name    = var.ad_ds_domain_name
+    User    = "${local.domain_admin_username}@${var.ad_ds_domain_name}"
     Restart = "true"
     Options = 3
   })
@@ -88,5 +88,7 @@ resource "azurerm_virtual_machine_extension" "domain_join" {
     Password = random_password.domain_join_admin.result
   })
 
-  depends_on = [time_sleep.domain_services_identity_sync]
+  # create_domain_objects（terraform/adfs_domain_controller.tf）がドメイン管理者アカウントを
+  # 作成してから参加する。
+  depends_on = [azurerm_virtual_machine_extension.create_domain_objects]
 }

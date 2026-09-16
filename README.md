@@ -50,8 +50,8 @@ Chat UI（Next.js）はKongの認証を全面的に信頼し、独自のOAuthク
 - Azure OpenAIリソース
 
 ### Group 2（追加）
-- picketfence自身のAzureサブスクリプション＋Entra IDテナントへの管理者アクセス（Microsoft Entra Domain Services・ADFS VM作成のため）
-- ADFSサーバー用Windows Server VMを稼働させ続けられるAzure予算（デモ後は`terraform destroy`で削除する前提）
+- picketfence自身のAzureサブスクリプション＋Entra IDテナントへの管理者アクセス（自己管理AD DSフォレスト・ADFS VM作成のため）
+- 自己管理AD DS・ADFSサーバー用Windows Server VMを稼働させ続けられるAzure予算（デモ後は`terraform destroy`で削除する前提）
 
 ## 技術スタック
 - **Kong Gateway**: `kong/kong-gateway-dev:pr-21082-ubuntu`（ベータ、Entra ID OBO対応ビルド）、Postgres backed、decKで宣言的管理
@@ -158,13 +158,13 @@ bun run dev   # http://localhost:3000 単体では認証ヘッダーが無いた
 
 Kong側への反映はまだ行っていません。P1の実機検証では、Entra ID用の`DECK_ENTRA_ISSUER`、`DECK_MIDDLE_TIER_CLIENT_ID`、`DECK_MIDDLE_TIER_CLIENT_SECRET`、`DECK_ENTRA_INSURANCE_SESSION_SECRET`と、ADFS用の`DECK_ADFS_ISSUER`、`DECK_ADFS_CLIENT_ID`、`DECK_ADFS_CLIENT_SECRET`、`DECK_ADFS_RESOURCE`、`DECK_ADFS_GROUP_CLAIM_NAME`、`DECK_ADFS_SESSION_SECRET`、`DECK_ADFS_POC_ATTRIBUTE_VALUE`を用意します。session secretはTerraform outputに含めず、IdP間で共有しません。`DECK_ADFS_RESOURCE`はADFSのWeb API identifierと一致させます。`DECK_ADFS_POC_ATTRIBUTE_VALUE`はG2 probe専用で、後続の認可DBを代替しません。
 
-### ADFS/Entra Domain Servicesインフラ（旧構成の参考）
+### ADFS/自己管理AD DSインフラ
 
 > 新しいcallback、claim、API資源の登録と承認gateは[改訂runbook](docs/adfs-setup-runbook.md)を正とします。
 
-`terraform/adfs_*.tf`（ネットワーク・Microsoft Entra Domain Services・ADFS VM）・`terraform/insurance_*.tf`（5グループのEntra IDテストユーザー）が、design-brief Group2「3. アーキテクチャ」のADFS/Entra側インフラを担う。ADFSロールのインストール・ファーム構築・OAuthサーバー設定（Application Group/Relying Party登録、Claim Issuance Policy）はTerraformの管理範囲外とし、[docs/adfs-setup-runbook.md](./docs/adfs-setup-runbook.md)に従って手動で行う（自動化度合いの判断根拠は[docs/decisions/0001-adfs-vm-provisioning-automation.md](./docs/decisions/0001-adfs-vm-provisioning-automation.md)参照）。
+`terraform/adfs_*.tf`（ネットワーク・自己管理AD DSフォレスト・ADFS VM。旧Microsoft Entra Domain Servicesは[ADR-0005](docs/decisions/0005-adfs-directory-platform.md)で撤去）・`terraform/insurance_*.tf`（5グループのテストユーザー定義。実際の作成はAD DS上、`terraform/adfs_domain_controller.tf`のCustomScriptExtension経由）が、design-brief Group2「3. アーキテクチャ」のADFS側インフラを担う。DC VM作成・フォレスト昇格・ドメイン管理者/テストユーザー作成・ADFS VMのドメイン参加まではTerraformが自動化する。ADFSロールのインストール・ファーム構築・OAuthサーバー設定（Application Group/Relying Party登録、Claim Issuance Policy）はTerraformの管理範囲外とし、[docs/adfs-setup-runbook.md](./docs/adfs-setup-runbook.md)に従って手動で行う（自動化度合いの判断根拠は[docs/decisions/0001-adfs-vm-provisioning-automation.md](./docs/decisions/0001-adfs-vm-provisioning-automation.md)、ディレクトリ基盤の判断根拠は[docs/decisions/0005-adfs-directory-platform.md](./docs/decisions/0005-adfs-directory-platform.md)参照）。
 
-**このインフラはKong社自身のEntra IDテナント（`kongstrong.onmicrosoft.com`、Group 1が使う既定のTerraformプロバイダ）とは別の、picketfence自身のAzureサブスクリプション・Entra IDテナントに構築する**（`terraform/adfs_providers.tf`のプロバイダエイリアス`azurerm.picketfence`/`azuread.picketfence`）。**Microsoft Entra Domain Services・ADFSサーバー用VMは稼働中は継続コストが発生する**（CLAUDE.mdエスカレーション条件2番目。デモ終了後は`terraform destroy`で削除する前提）。
+**このインフラはKong社自身のEntra IDテナント（`kongstrong.onmicrosoft.com`、Group 1が使う既定のTerraformプロバイダ）とは別の、picketfence自身のAzureサブスクリプションに構築する**（`terraform/adfs_providers.tf`のプロバイダエイリアス`azurerm.picketfence`/`azuread.picketfence`）。**自己管理AD DS・ADFSサーバー用VMは稼働中は継続コストが発生する**（CLAUDE.mdエスカレーション条件2番目。デモ終了後は`terraform destroy`で削除する前提）。
 
 1. picketfence自身のアカウントでAzure CLIへ追加ログイン: `az login`（`kongstrong.onmicrosoft.com`用のログインとは別に、picketfence側アカウントでも実行する。Azure CLIは複数アカウントのトークンを同時にキャッシュできるため、`az account set`でアクティブ切り替えする必要はない）
 2. 変数ファイルを準備:
