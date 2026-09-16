@@ -263,3 +263,14 @@
 - **Windows PowerShell 5.1検証**: branch上の構成スクリプトと回帰テストをVMの一意な一時フォルダーへ取得し、Windows PowerShell 5.1で実行した。構文解析と全回帰テストが成功し、stderrは空だった。一時フォルダーは同じ実行の`finally`で削除した。DNS、AD、証明書ストア、AD FSは変更していない。
 - **対処・回避方法**: サービス削除や`OverwriteConfiguration`は使わない。構成完了フラグと`Get-AdfsProperties`で既存ファームを検出し、`Stopped`、`Manual`のロール導入済み状態だけ再開を許可する。その他の判定不能なサービス状態は停止する。適用前にWindows PowerShell 5.1、管理者昇格、ドメインユーザーUPNも検証する。
 - **Runbook修正**: `C:\KongDemo\adfs`はTerraformで作成されないことを明記し、レビュー済みcommitからの取得コマンドを追加した。Windowsへのサインインをローカル管理者からドメイン管理者へ切り替える手順と、`whoami.exe /upn`による確認も追加した。
+
+## 2026-09-16 AD FSファーム前提条件検査がDomain Administrator権限不足で停止
+
+- **何を期待していたか**: deep preflightで既存のDNS、OU、gMSAを再利用し、`Configure-AdfsDemoFarm.ps1 -Apply`がTLS証明書とAD FSファームを作成すること。
+- **実際どうだったか**: TLS証明書作成後、`Test-AdfsFarmInstallation`が「Domain Administrator credentials、または`AdminConfiguration`とDomain Administrator preparationが必要」と返し、スクリプトがファーム作成前に停止した。表示されたUPNは`adfs-domain-admin@hashipicketfence.onmicrosoft.com`だった。
+- **現時点の判断**: `whoami /upn`はドメインアカウントであることしか確認しておらず、現在の昇格トークンがマネージドドメインの`AAD DC Administrators`／`Domain Admins`相当権限を持つことは検証していない。ユーザーのディレクトリ所属、Windowsトークン内のSID、管理グループの対応関係を読み取り専用で確認するまで、`-Apply`を再実行しない。
+- **部分変更**: DNS、OU、gMSAは既存を再利用し、AD FSファームは未構成のまま。実機のread-only inventoryで、デモ用TLS証明書がPersonal storeに1件、そのthumbprintと一致する証明書がRoot storeに1件あり、`C:\ProgramData\KongDemo\adfs-demo-root.cer`も存在すると確認した。
+- **診断コマンドの初回失敗**: Azure CLIのJMESPath query `value[].message`を引用しなかったため、ローカルzshが角括弧をglobとして解釈し、`no matches found`で停止した。Azure APIは呼ばれず、VMにも到達していない。query全体を単一引用符で囲んで再実行する。
+- **実機確認**: `adfs-domain-admin`の所属は`AAD DC Administrators`と`Domain Users`であり、`Domain Admins`には所属していない。デモ用TLS証明書はLocalMachineのPersonal storeに1件作成済み、`CN=ADFS,CN=Microsoft,CN=Program Data`のDKM親コンテナは未作成、`adfssrv`は`Stopped`／`Manual`でファーム未構成だった。
+- **原因確定**: Microsoft Entra Domain Servicesはテナント利用者へDomain Admin／Enterprise Admin権限を提供しない。`AAD DC Administrators`はドメイン参加VMのローカル管理、DNS、GPO、カスタムOU等に限定された委任管理者である。一方、通常の`Install-AdfsFarm`はDomain Admin資格情報を要求し、非Domain Admin方式もDomain Adminが事前にDKMコンテナとACLを準備した`AdminConfiguration`を必要とする。現在のEntra Domain Services構成だけでは、その公式前提を満たせない。
+- **PR準備時の認証停止**: 設計記録commitの最初のHTTPS pushは`Invalid username or token`で停止し、remoteを変更しなかった。値を表示せず認証元を確認すると、`GITHUB_TOKEN`環境変数と`~/.config/gh/hosts.yml`の両方をGitHub CLIが無効と判定した。環境変数を除外するだけでは解消しなかった。既存SSH認証による同じrepositoryの`ls-remote`は成功したため、remote設定を変更せず、pushコマンドだけSSH URLを使う。

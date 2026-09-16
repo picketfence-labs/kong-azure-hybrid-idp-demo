@@ -2,9 +2,12 @@
 
 対象は構築担当者。最新[設計](design-brief.md)と[ADR-0001](decisions/0001-adfs-vm-provisioning-automation.md)に従い、基盤/ドメイン参加をTerraform、ADFS設定を手動で行います。2026-09-15にSection 1のTerraform構築と検証を完了しました。Section 2以降は未実施です。
 
+> [!WARNING]
+> 2026-09-16現在、AD FSファーム作成は[ADR-0005](decisions/0005-adfs-directory-platform.md)の判断待ちです。Microsoft Entra Domain ServicesはDomain Admin権限を提供せず、現在の`AAD DC Administrators`アカウントでは公式のAD FS事前条件を満たせません。判断が終わるまで`Configure-AdfsDemoFarm.ps1 -Apply`を再実行しないでください。
+
 ## 0. 再開前のgate
 
-- [ ] 設計PRをレビューし、対象commitを固定する。自己管理AD DSへ変更しない。
+- [ ] [ADR-0005](decisions/0005-adfs-directory-platform.md)を決定し、採択したディレクトリ基盤を反映した設計PRをレビューする。決定前に自己管理AD DSへの変更やAD FSファーム作成を行わない。
 - [ ] Azureの対象テナント・subscription、権限、予算、削除担当/期限を確認する。Entra系デモのテナントとADFS同期元を同一と決めつけない。
 - [ ] 以前のapply中断・削除記録を確認し、現在のAzure残存とTerraform stateを照合する。過去の削除記録を現在の実測としない。
 - [ ] Gatewayライセンス、image digest、`kong-ee`参照、必要ツールを用意する。公開履歴に載った資格情報が有効なら管理者に変更を依頼する。

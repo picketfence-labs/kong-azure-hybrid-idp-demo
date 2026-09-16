@@ -56,14 +56,19 @@ Federation Service名に既存のVM FQDNを使う。Windows Server上でServer A
 
 当初はVMのFQDNを単一ノードのFederation Service名として再利用できると想定した。実際には、Microsoft公式資料がFederation Service名と既存サーバーのWindowsホスト名を同一にしてはならないと明記していた。Option Aの承認後、ADFSロールやDNSを変更する前に検出したため、Azure側のロールバックは発生していない。
 
+Option Bの適用では、専用DNS Aレコード、gMSA、TLS証明書の作成まで成功した。AD FSファームの前提条件検査はDomain Admin権限不足で停止した。名前、TLS、サービスIDの決定とは別に、Entra Domain ServicesがAD FSのDKM準備に必要な権限を提供しない問題が判明したため、[ADR-0005](0005-adfs-directory-platform.md)の決定までこのADRの残りを適用しない。
+
 ## 影響・トレードオフ
 
 Option Bを採用すると、managed domain DNSにデモ専用Aレコードが残る。デモ終了時にこのレコードを削除する。自己署名証明書はこのデモだけで信頼し、検証終了時にブラウザ端末とKongのtrust storeから削除する必要がある。
+
+現在はmanaged domain DNSのAレコード、専用OU、gMSA、Personal storeとRoot storeの証明書、公開CERが作成済みである。AD FSファーム、Application Group、OIDC設定は未作成である。ADR-0005で別のディレクトリ基盤を選ぶ場合は、既存資源の削除範囲をplanとread-only inventoryで確認してから処理する。
 
 ## 関連する決定
 
 - [ADR-0001](0001-adfs-vm-provisioning-automation.md): ADFSファーム構築をRDPの対話手順として管理する。
 - [ADR-0002](0002-hybrid-idp-requirements.md): Group 2はADFS OIDCを使い、KongでTLSを検証する。
+- [ADR-0005](0005-adfs-directory-platform.md): AD FSを構成できるディレクトリ基盤を再判断する。
 - [Microsoft: AD FS SPNの確認](https://learn.microsoft.com/en-us/microsoft-365/troubleshoot/sign-in/federated-user-repeatedly-prompted-for-credentials)
 - [Microsoft: Entra Domain ServicesのDNS管理](https://learn.microsoft.com/en-us/entra/identity/domain-services/manage-dns)
 - [Microsoft: Entra Domain ServicesのgMSA](https://learn.microsoft.com/en-us/entra/identity/domain-services/create-gmsa)

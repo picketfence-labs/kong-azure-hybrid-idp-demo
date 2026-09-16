@@ -37,6 +37,7 @@
 
 - 旧「全6 APIをGroup 2で処理」「属性値＝グループID」「UI自体がADFSログインへ遷移」は変更対象。
 - 主要旧実装はmerge済みだが、ADFS実基盤と両経路のE2Eは未検証。図の品質検証は認証・認可E2Eの証拠ではない。
+- 2026-09-16の実機確認で、Entra Domain Servicesの`AAD DC Administrators`はAD FSファーム作成に必要なDomain Admin権限を持たないと判明した。Entra DS＋ADFS維持と自己管理AD DS不採用を同時に満たす公式構成を確認できないため、この要件だけを[ADR-0005](0005-adfs-directory-platform.md)で再判断する。他のAPI分担、認可マスタ、UI、観測要件は変更しない。
 
 ## 影響・トレードオフ
 
@@ -48,3 +49,4 @@
 
 - [ADR-0001](0001-adfs-vm-provisioning-automation.md): Terraformと手動ADFS設定の責務分担を維持。
 - [ADR-0003](0003-ui-session-master-observation.md): 実装方式の提案とPoC gate。
+- [ADR-0005](0005-adfs-directory-platform.md): Entra Domain Servicesの権限制約を受け、AD FSのディレクトリ基盤を再判断する。
