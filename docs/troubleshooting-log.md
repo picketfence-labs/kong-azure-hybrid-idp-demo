@@ -345,3 +345,12 @@ Section 2手順10（`.\Configure-AdfsDemoFarm.ps1 -Apply`）の初回実行か�
   - **対処・解決確認**: `Get-ADServiceAccount -Identity 'adfssvc' | Move-ADObject -TargetPath "CN=Managed Service Accounts,<domain DN>"`でgMSAを既定のコンテナへ移動したところ、`Install-AdfsFarm`が成功し、AD FSファームが作成された（`Issuer: https://adfs.adfsdemo.picketfencelabs.local/adfs`、`Service state: Running`）。
 - **恒久修正**: `scripts/adfs/Configure-AdfsDemoFarm.ps1`を修正し、(1) KDS root keyが存在しなければ`Add-KdsRootKey -EffectiveTime`で作成した直後に`msKds-CreateTime`/`msKds-UseStartTime`を両方過去日時へ調整、(2) gMSAを独自OUではなく既定の`CN=Managed Service Accounts`コンテナへ作成、するよう変更した。これにより次回このデモを最初から構築する際は、今回の手動対処（KDS属性の直接書き換え、gMSAの手動移動）を経由せず一度で成功する想定。
 - **副次的な所見**: `Install-ADServiceAccount`実行後にVMを再起動しても、gMSA/KDS関連の問題は解消しなかった（キャッシュ由来ではなく、上記2つの構造的な原因だった）。`Install-AdfsFarm`のエラーメッセージ・戻り値は極めて簡素（`Message`/`Context`/`Status`のみ）で、AD FS自身のイベントログにも記録されないため、AD FS関連の未知のエラーメッセージはまず文字列そのものをWeb検索するのが有効（このリポジトリの一次情報だけでは特定できなかった）。
+
+## 2026-09-16 ADFS自己署名証明書のtrust store登録・DNS疎通（Section 2手順11〜13）実装で判明した2件
+
+- **何を期待していたか**: `docs/adfs-setup-runbook.md`Section 2手順11に従い、`vm-adfs-demo`上の`C:\ProgramData\KongDemo\adfs-demo-root.cer`をRDPのファイルコピー機能で管理端末へ取り出せること。
+- **実際どうだったか**: RDPのクリップボードベースのファイル転送は接続元クライアント・設定に依存し再現性が低いため、手順6（スクリプト取得）や過去のパスワード復旧作業と同じ`az vm run-command invoke`（読み取り専用）方式に統一する方が確実と判断した。証明書は秘密鍵を含まない公開情報のため、この方式でコマンド出力へBase64文字列が乗ってもCLAUDE.md「機密情報の扱い」には抵触しない（[[az-run-command-secret-exposure]]の対象はあくまで秘密鍵・パスワード等）。
+  - **対処・解決確認**: `[Convert]::ToBase64String([IO.File]::ReadAllBytes(...))`を`--scripts`のインラインコマンドとして実行し、`--query "value[0].message" -o tsv`の出力をローカルで`base64 -d`→`openssl x509 -inform DER -out ... -outform PEM`でPEM化する手順に確定した。実機（`vm-adfs-demo`、`4.216.110.53`）で実行し、`CN=adfs.adfsdemo.picketfencelabs.local`・有効期限`2026-11-16`・SHA-256 fingerprint`47:EA:E4:...:84:94`のPEMを取得できることを確認した。
+- **何を期待していたか（2件目）**: Kongコンテナ内から`curl`でADFSのdiscovery endpointへ疎通確認できること。
+- **実際どうだったか**: 使用イメージ`kong/kong-gateway-dev:pr-21082-ubuntu`には`curl`が含まれていない（`which curl`が失敗、`getent`は存在）。
+- **対処・解決確認**: コンテナに同梱されている`openssl s_client`で代替する方式へ変更した。同イメージのコンテナへ`--add-host`でDNSを固定し、取得したPEMを`-CAfile`に指定して`vm-adfs-demo`（443番ポート）へ実際に接続し、`getent hosts`が指定Public IPを返すこと・`openssl s_client`の`Verify return code: 0 (ok)`を実測確認した上で、`docker-compose.yml`の`kong`サービスへ`extra_hosts`（`${ADFS_PUBLIC_IP}`）と`KONG_LUA_SSL_TRUSTED_CERTIFICATE=system,/etc/kong/adfs-demo-root.pem`を追加した。`docs/adfs-setup-runbook.md`Section 2手順11〜13を、これらの実測済みコマンドへ書き換えた。

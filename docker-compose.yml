@@ -64,6 +64,13 @@ services:
       # マウント先にkong/pluginsのネスト構造を持たせることで、KONG_LUA_PACKAGE_PATHの
       # ベースパスから require("kong.plugins.legacy-authz-adapter.*") が解決できるようにする。
       - ./kong/plugins:/usr/local/custom/kong/plugins:ro
+      # ADFSデモ用の自己署名ルート証明書（PEM）。docs/adfs-setup-runbook.md Section 2手順11で
+      # ./certs/adfs-demo-root.pem として取得したものをこの名前で固定的にマウントする。
+      - ./certs/adfs-demo-root.pem:/etc/kong/adfs-demo-root.pem:ro
+    extra_hosts:
+      # ADFSは自己署名証明書のFQDN固定のみで、パブリックDNSに登録しない（ADR-0004）。
+      # KongコンテナからADFS VMのPublic IPへ名前解決させるための固定エントリ。
+      - "adfs.adfsdemo.picketfencelabs.local:${ADFS_PUBLIC_IP:?ADFS_PUBLIC_IP is required}"
     environment:
       KONG_DATABASE: postgres
       KONG_PG_HOST: kong-db
@@ -79,6 +86,9 @@ services:
       # （Admin APIのGET /plugins/schema/legacy-authz-adapterが正しく応答、docs/troubleshooting-log.md参照）。
       KONG_PLUGINS: "bundled,legacy-authz-adapter"
       KONG_LUA_PACKAGE_PATH: "/usr/local/custom/?.lua;/usr/local/custom/?/init.lua;;"
+      # ADFSの自己署名ルート証明書をシステムCAストアに追加信頼する（openid-connectプラグインの
+      # ADFS呼び出しでtls_verify=falseを使わないため、ADR-0004の方針通り必須）。
+      KONG_LUA_SSL_TRUSTED_CERTIFICATE: "system,/etc/kong/adfs-demo-root.pem"
     depends_on:
       kong-migrations:
         condition: service_completed_successfully

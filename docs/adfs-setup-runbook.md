@@ -133,9 +133,54 @@ Terraform（`terraform/adfs_domain_controller.tf`）が次の順序で自動構�
 
    スクリプトは`OverwriteConfiguration`を使いません。構成済みファーム、判定できないAD FSサービス状態、別IPの同名DNSレコード、別所有者のSPNを検出した場合は停止します。AD FSの前提条件検査とインストール結果は、全項目が`Success`の場合だけ次へ進みます。インストール後はdiscovery endpointを最大60秒待ち、issuerまで検証します。
 
-11. VM上の`C:\ProgramData\KongDemo\adfs-demo-root.cer`を管理端末へコピーする。秘密鍵を含むPFXはエクスポートしない。
+11. VM上の`C:\ProgramData\KongDemo\adfs-demo-root.cer`を管理端末（このリポジトリを`docker compose`で動かす端末）へコピーする。秘密鍵を含むPFXはエクスポートしない。RDPのファイルコピーではなく、管理端末のターミナルから`az vm run-command invoke`（読み取り専用）でBase64化した内容を取得し、PEMへ変換してリポジトリ直下`certs/`（`.gitignore`対象、コミットしない）へ保存する。
+
+    ```bash
+    RG=$(az vm list -d --query "[?name=='vm-adfs-demo'].resourceGroup" -o tsv)
+    mkdir -p certs
+    az vm run-command invoke \
+      --resource-group "$RG" \
+      --name vm-adfs-demo \
+      --command-id RunPowerShellScript \
+      --scripts "[Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\ProgramData\KongDemo\adfs-demo-root.cer'))" \
+      --query "value[0].message" -o tsv | base64 -d | openssl x509 -inform DER -out certs/adfs-demo-root.pem
+    ```
+
+    次のコマンドでSubject/失効日/SHA-256 thumbprintを確認し、記録する（デモ終了時にtrust storeから削除する際の照合用）。
+
+    ```bash
+    openssl x509 -in certs/adfs-demo-root.pem -noout -subject -dates -fingerprint -sha256
+    ```
+
 12. 管理端末とKongコンテナのtrust storeへ公開証明書を登録する。デモ終了時に削除できるよう、thumbprintと登録先だけを記録する。
-13. `adfs.adfsdemo.picketfencelabs.local`を、管理端末とKongコンテナの両方からADFS VMのPublic IPへ解決させる。コンテナ側は後続のCompose設定で検証し、ホストOSの設定だけで完了扱いにしない。
+    - **管理端末（macOS）**: ログインキーチェーンではなくSystemキーチェーンへ、この証明書だけを個別に信頼させる（システム全体のデフォルト信頼設定は変更しない）。
+
+      ```bash
+      sudo security add-trusted-cert -d -r trustAsRoot -k /Library/Keychains/System.keychain certs/adfs-demo-root.pem
+      ```
+
+      削除する場合は`sudo security delete-certificate -c "adfs.adfsdemo.picketfencelabs.local" /Library/Keychains/System.keychain`（上記のCNと一致することを確認してから実行する）。
+    - **Kongコンテナ**: `docker-compose.yml`の`kong`サービスが`certs/adfs-demo-root.pem`を`/etc/kong/adfs-demo-root.pem`としてマウントし、`KONG_LUA_SSL_TRUSTED_CERTIFICATE=system,/etc/kong/adfs-demo-root.pem`で追加信頼する設定を既に含む（`tls_verify=false`は使わない、ADR-0004）。手順11でファイルを配置すれば、`docker compose up`時に自動的に読み込まれる。証明書を入れ替えた場合は`docker compose up -d kong`でコンテナを再作成する（マウントはファイル単位のため`restart`では再読込されない場合がある）。
+
+13. `adfs.adfsdemo.picketfencelabs.local`を、管理端末とKongコンテナの両方からADFS VMのPublic IPへ解決させる。ADFSは自己署名証明書のFQDN固定のみでパブリックDNSに登録しないため（ADR-0004）、双方とも固定エントリで解決させる。
+    - **管理端末（macOS）**: `/etc/hosts`へ`terraform output adfs_vm_public_ip`の値を追記する（既存デモ環境と重複する行がないか確認してから追記する）。
+
+      ```bash
+      IP=$(cd terraform && terraform output -raw adfs_vm_public_ip)
+      echo "$IP adfs.adfsdemo.picketfencelabs.local" | sudo tee -a /etc/hosts
+      ```
+
+      `dscacheutil -flushcache`でDNSキャッシュを破棄してから`dig adfs.adfsdemo.picketfencelabs.local +short`で解決先IPが一致することを確認する。デモ終了後は追記した行を削除する。
+    - **Kongコンテナ**: リポジトリ直下の（コミットしない）`.env`に`ADFS_PUBLIC_IP=<上記IP>`を設定する。`docker-compose.yml`の`kong`サービスが`extra_hosts`でこの値を`adfs.adfsdemo.picketfencelabs.local`へ固定解決する設定を既に含む。ホストOS側の設定だけで完了扱いにせず、`docker compose up -d`後に次のコマンドでコンテナ内部から実際に解決・TLS検証できることを確認する。
+
+      ```bash
+      docker compose exec kong getent hosts adfs.adfsdemo.picketfencelabs.local
+      docker compose exec kong openssl s_client -connect adfs.adfsdemo.picketfencelabs.local:443 \
+        -CAfile /etc/kong/adfs-demo-root.pem -servername adfs.adfsdemo.picketfencelabs.local </dev/null 2>/dev/null \
+        | grep "Verify return code"
+      ```
+
+      Kongのイメージには`curl`が入っていないため`openssl s_client`で代用する。1つ目のコマンドがADFS VMのPublic IPを返し、2つ目が`Verify return code: 0 (ok)`を返せば、DNS解決とTLS証明書信頼の両方が正しく機能している。
 
 ## 3. Application GroupとAPI資源
 
