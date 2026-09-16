@@ -174,7 +174,13 @@ Terraform（`terraform/adfs_domain_controller.tf`）が次の順序で自動構�
       echo "$IP adfs.adfsdemo.picketfencelabs.local" | sudo tee -a /etc/hosts
       ```
 
-      `dscacheutil -flushcache`でDNSキャッシュを破棄してから`dig adfs.adfsdemo.picketfencelabs.local +short`で解決先IPが一致することを確認する。デモ終了後は追記した行を削除する。
+      `dscacheutil -flushcache`でDNSキャッシュを破棄してから確認する。**`dig`は`/etc/hosts`を経由せず直接DNSサーバーへ問い合わせるため使わない**（実在しないドメインのため常に無応答になり、`/etc/hosts`の設定確認にはならない。実機で確認済み、[troubleshooting-log](troubleshooting-log.md)参照）。macOSの名前解決キャッシュ（`/etc/hosts`を反映する）を直接確認できる`dscacheutil`を使う。
+
+      ```bash
+      dscacheutil -q host -a name adfs.adfsdemo.picketfencelabs.local
+      ```
+
+      `ip_address`が上記の`$IP`と一致することを確認する（`ping`はAzure NSGがICMPを許可していないため応答がなくても問題ない）。デモ終了後は追記した行を削除する。
     - **Kongコンテナ**: リポジトリ直下の（コミットしない）`.env`に`ADFS_PUBLIC_IP=<上記IP>`を設定する。`docker-compose.yml`の`kong`サービスが`extra_hosts`でこの値を`adfs.adfsdemo.picketfencelabs.local`へ固定解決する設定を既に含む。ホストOS側の設定だけで完了扱いにせず、`docker compose up -d`後に次のコマンドでコンテナ内部から実際に解決・TLS検証できることを確認する。
 
       ```bash

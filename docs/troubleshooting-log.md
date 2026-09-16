@@ -369,3 +369,10 @@ Section 2手順10（`.\Configure-AdfsDemoFarm.ps1 -Apply`）の初回実行か�
 - **実際どうだったか**: Firefoxが`この証明書は認証局の証明書ではないため、認証局の一覧には追加できません`という警告を出し、インポートを拒否した（利用者が実機で確認・報告）。
 - **原因の特定**: `openssl x509 -in certs/adfs-demo-root.pem -noout -text`で確認したところ、この証明書には`X509v3 Basic Constraints`拡張自体が存在しない（`CA:TRUE`の記載がない）。つまりこの証明書はADFSが生成した通常の自己署名**サーバー（リーフ）証明書**であり、Issuer=Subjectの自己署名ではあっても認証局証明書ではない。FirefoxのNSS証明書ストアは「認証局」タブへの登録時に`Basic Constraints`の`CA:TRUE`を要求するため、原理的にこの証明書を認証局として登録することはできない（macOSのSystemキーチェーンでの信頼設定不調（直前のエントリ）についても、MDM制限に加えてこの証明書の構造自体が一因だった可能性がある）。
 - **対処・解決確認**: 認証局として登録する代わりに、Firefoxの**サーバー**タブ（`証明書を表示`→サーバー→追加→ホスト名`adfs.adfsdemo.picketfencelabs.local:443`を入力して証明書を取得→フィンガープリント確認→セキュリティ例外を承認）でホスト単位の例外として登録する方式へ変更した。この方式は自己署名のリーフ証明書に対する標準的なブラウザの扱いであり、`Basic Constraints`を要求しない。`docs/adfs-setup-runbook.md`Section 2手順12・Section 5冒頭の記載を修正した（未検証、利用者による実機確認待ち）。この例外登録はFirefoxが実際にホストへ接続して証明書を取得するため、手順13（DNS解決）を先に完了させる必要がある旨も明記した。Kongコンテナ側の信頼設定（`KONG_LUA_SSL_TRUSTED_CERTIFICATE`）はOpenSSLの`lua_ssl_trusted_certificate`が`Basic Constraints`の有無を問わず自己署名証明書を直接信頼できるため、この問題の影響を受けず既に解決済みのまま。
+
+## 2026-09-16 手順13の確認コマンド`dig`が`/etc/hosts`を反映せず無応答になる
+
+- **何を期待していたか**: Section 2手順13の`sudo tee -a /etc/hosts`で`adfs.adfsdemo.picketfencelabs.local`を追記後、`dscacheutil -flushcache`→`dig adfs.adfsdemo.picketfencelabs.local +short`で追記したIPが解決結果として返ること。
+- **実際どうだったか**: `/etc/hosts`への追記自体はエラーなく完了したが、`dig +short`は何も返さなかった（利用者が実機で報告）。
+- **原因の特定**: `dig`はOSのリゾルバ（`/etc/hosts`・`nsswitch`相当の設定）を経由せず、直接DNSサーバーへ問い合わせるツールである。`adfsdemo.picketfencelabs.local`は実在のDNSに登録されていないため、`/etc/hosts`の設定が正しくても`dig`は常に無応答になる。実際に`grep adfsdemo /etc/hosts`でエントリが存在すること、`dscacheutil -q host -a name adfs.adfsdemo.picketfencelabs.local`（`/etc/hosts`を反映するmacOSのNS解決キャッシュに問い合わせるツール）で正しいIP（`4.216.110.53`）が返ることを確認し、`/etc/hosts`の設定自体は最初から正しく機能していたと判明した（`ping`は無応答だったが、これはAzure NSGがICMPを許可していないためで想定内）。
+- **対処・解決確認**: `docs/adfs-setup-runbook.md`Section 2手順13の確認コマンドを`dig +short`から`dscacheutil -q host -a name`へ修正した。あわせて、利用者の`/etc/hosts`に同一エントリが2行重複していることに気づいたが、動作に影響はないため利用者の任意のタイミングでの整理に委ねた（削除は`sudo`操作のため利用者側で実施）。
