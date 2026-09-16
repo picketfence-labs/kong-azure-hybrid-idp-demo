@@ -293,17 +293,12 @@ if ($existingRecords.Count -gt 0) {
     }
 }
 
-$serviceOuName = "Kong Demo Service Accounts"
-$serviceOuDn = "OU=$serviceOuName,$($domain.DistinguishedName)"
-$serviceOus = @(
-    Get-ADOrganizationalUnit `
-        -Filter { Name -eq $serviceOuName } `
-        -SearchBase $domain.DistinguishedName `
-        -SearchScope OneLevel
-)
-if ($serviceOus.Count -gt 1) {
-    throw "Multiple service account OUs named $serviceOuName were found directly under the domain root."
-}
+# gMSAは既定の"CN=Managed Service Accounts"コンテナへ作成する。独自OUへ作成すると、
+# 汎用のGet-ADServiceAccount/Test-ADServiceAccountは成功するにもかかわらずInstall-AdfsFarm
+# だけが"Unable to retrieve group Managed Service Account information. The system cannot
+# find the file specified"で失敗する（AD FS側がこのコンテナを前提にしている、実機・複数の
+# 一次情報で確認済み。docs/troubleshooting-log.md参照）。
+$defaultMsaContainerDn = "CN=Managed Service Accounts,$($domain.DistinguishedName)"
 
 $gmsaName = "adfssvc"
 $gmsaDnsHostName = "$gmsaName.$DomainName"
@@ -343,13 +338,17 @@ $certificate = Get-ChildItem Cert:\LocalMachine\My |
     Sort-Object NotAfter -Descending |
     Select-Object -First 1
 
+$kdsRootKeyContainerDn = "CN=Master Root Keys,CN=Group Key Distribution Service,CN=Services,$((Get-ADRootDSE).configurationNamingContext)"
+$kdsRootKeyObject = Get-ADObject -Filter "ObjectClass -eq 'msKds-ProvRootKey'" -SearchBase $kdsRootKeyContainerDn -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+
 $dnsPlan = if ($existingRecords.Count -eq 0) { "Create" } else { "Reuse" }
-$ouPlan = if ($serviceOus.Count -eq 0) { "Create" } else { "Reuse" }
+$kdsRootKeyPlan = if ($null -eq $kdsRootKeyObject) { "Create" } else { "Reuse" }
 $gmsaPlan = if ($null -eq $gmsa) { "Create" } else { "Reuse" }
 $certificatePlan = if ($null -eq $certificate) { "Create" } else { "Reuse" }
 Write-Host "AD FS farm state: $adfsFarmState"
 Write-Host "DNS A record: $dnsPlan"
-Write-Host "Service account OU: $ouPlan"
+Write-Host "KDS root key: $kdsRootKeyPlan"
 Write-Host "gMSA: $gmsaPlan"
 Write-Host "TLS certificate: $certificatePlan"
 
@@ -377,18 +376,26 @@ if ($serverIpv4 -notin $resolvedFederationAddresses) {
     throw "$FederationServiceName does not resolve to $serverIpv4."
 }
 
-if ($serviceOus.Count -eq 0) {
-    New-ADOrganizationalUnit `
-        -Name $serviceOuName `
-        -Path $domain.DistinguishedName `
-        -ProtectedFromAccidentalDeletion $true
+if ($null -eq $kdsRootKeyObject) {
+    # 単一DCのデモ環境のため、複数DCへのレプリケーション収束を待つ既定の10時間は不要。
+    # Add-KdsRootKey -EffectiveTimeは msKds-UseStartTime のみ過去日時にし、
+    # msKds-CreateTime自体は実際の作成時刻のまま残る。Install-AdfsFarmはmsKds-CreateTimeを
+    # 直接チェックしてこれが実時間で10時間経過していないと同じ警告とともに失敗するため
+    # （実機で確認済み、docs/troubleshooting-log.md参照）、CreateTimeも合わせて過去日時へ
+    # 書き換える。単一DCのラボ/デモ用途に限った対処であり、複数DC環境では行わないこと。
+    Add-KdsRootKey -EffectiveTime ((Get-Date).AddHours(-10)) | Out-Null
+    $kdsRootKeyObject = Get-ADObject -Filter "ObjectClass -eq 'msKds-ProvRootKey'" -SearchBase $kdsRootKeyContainerDn |
+        Select-Object -First 1
+    $backdatedFileTime = (Get-Date).AddHours(-11).ToFileTimeUtc()
+    Set-ADObject -Identity $kdsRootKeyObject.DistinguishedName `
+        -Replace @{ 'msKds-CreateTime' = $backdatedFileTime; 'msKds-UseStartTime' = $backdatedFileTime }
 }
 
 if ($null -eq $gmsa) {
     New-ADServiceAccount `
         -Name $gmsaName `
         -DNSHostName $gmsaDnsHostName `
-        -Path $serviceOuDn `
+        -Path $defaultMsaContainerDn `
         -KerberosEncryptionType AES128, AES256 `
         -ManagedPasswordIntervalInDays 30 `
         -ServicePrincipalNames $requiredSpns `

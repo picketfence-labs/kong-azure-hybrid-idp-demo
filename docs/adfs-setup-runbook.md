@@ -115,8 +115,8 @@ Terraform（`terraform/adfs_domain_controller.tf`）が次の順序で自動構�
    | AD FS role | 初回は`Available`。中断後の再実行では`Installed` |
    | AD FS farm state | `RoleInstalledOnly` |
    | DNS A record | 初回は`Create`。作成後の再実行では`Reuse` |
-   | Service account OU | 初回は`Create`。作成後の再実行では`Reuse` |
-   | gMSA | 初回は`Create`。作成後の再実行では`Reuse` |
+   | KDS root key | 初回は`Create`。作成後の再実行では`Reuse`（単一DC構成のため作成時に有効時刻を10時間過去へ調整する。[troubleshooting-log](troubleshooting-log.md)参照） |
+   | gMSA | 初回は`Create`。作成後の再実行では`Reuse`（既定の`CN=Managed Service Accounts`コンテナへ作成される） |
    | TLS certificate | 初回は`Create`。有効なデモ用証明書があれば`Reuse` |
 
    最後に`Deep preflight only. No DNS, directory, certificate, or AD FS changes were made.`と表示されることを確認する。この表示より前に停止した場合は`-Apply`を実行しない。
@@ -129,7 +129,7 @@ Terraform（`terraform/adfs_domain_controller.tf`）が次の順序で自動構�
 
    Windows機能が未導入の場合、この実行は機能の導入だけで終了する。`Required Windows features were installed. Rerun without -Apply for the deep preflight.`と表示されたら、手順8へ戻る。deep preflightを確認せずに次の変更処理へ進まない。
 
-   AD FSロールのインストール直後は、ファーム未構成でも`adfssrv`サービスが`Stopped`、`Manual`で存在する。レジストリ値`InitialConfigurationCompleted`、サービスアカウント用OU、gMSAが存在しないことも初回実行では正常である。サービス、レジストリ、ADオブジェクトを手動で変更しない。処理が中断した場合は、同じドメイン管理者セッションから修正版スクリプトを再実行する。`The AD FS role is installed, but no configured farm was detected. Continuing.`と表示され、残りの構成へ進む。
+   AD FSロールのインストール直後は、ファーム未構成でも`adfssrv`サービスが`Stopped`、`Manual`で存在する。レジストリ値`InitialConfigurationCompleted`、KDS root key、gMSAが存在しないことも初回実行では正常である。サービス、レジストリ、ADオブジェクトを手動で変更しない。処理が中断した場合は、同じドメイン管理者セッションから修正版スクリプトを再実行する。`The AD FS role is installed, but no configured farm was detected. Continuing.`と表示され、残りの構成へ進む。
 
    スクリプトは`OverwriteConfiguration`を使いません。構成済みファーム、判定できないAD FSサービス状態、別IPの同名DNSレコード、別所有者のSPNを検出した場合は停止します。AD FSの前提条件検査とインストール結果は、全項目が`Success`の場合だけ次へ進みます。インストール後はdiscovery endpointを最大60秒待ち、issuerまで検証します。
 
