@@ -322,3 +322,9 @@ PR #25マージ後、利用者承認を得て`terraform apply -var-file=adfs.tfv
   3. ローカルの一時ファイル方式で`System.DirectoryServices.AccountManagement.PrincipalContext.ValidateCredentials`を`vm-dc-demo`上で実行し、新しいパスワードがAD側の実際の値と一致すること（`ValidateCredentials=True`）を確認した。`vm-adfs-demo`は`domain_join`拡張機能の再実行後も`PartOfDomain=True`のまま（ドメイン再参加は問題なく冪等だった）。
   4. `terraform plan -var-file=adfs.tfvars`は`No changes`に収束済み。
   5. 検証・復旧に使ったローカルの一時スクリプト・ログファイル（平文パスワードを含む）はすべて削除済み。
+
+## 2026-09-16 RDP経由でパイプ・カンマを含むコマンドを貼り付けると`>>`の継続入力プロンプトへ入り結果が空になった
+
+- **何を期待していたか**: `docs/adfs-setup-runbook.md`Section 2手順4の`$PSVersionTable | Select-Object PSEdition, PSVersion`を管理者Windows PowerShellへ貼り付け、`PSEdition`/`PSVersion`が1行で表示されること。
+- **実際どうだったか**: RDP経由のクリップボード貼り付けで、コマンドが`>>`（PowerShellの継続入力プロンプト）に入ったまま止まり、Enterで確定させても`PSEdition`/`PSVersion`の見出しだけが表示されデータ行が空になった。空行のままEnterを2回押して`>>`状態を解消しても再現した。
+- **対処・解決確認**: パイプ・カンマを使わない`$PSVersionTable.PSEdition`／`$PSVersionTable.PSVersion`の2コマンドへ分けて個別に貼り付けたところ、それぞれ`Desktop`／`5.1...`が正しく表示された。`docs/adfs-setup-runbook.md`Section 2手順4を、この2コマンド方式へ更新した。RDP先へ複数行のPowerShellコマンドを貼り付ける手順は、今後もパイプ・カンマを含む1行コマンドを避け、可能な限り1コマンド1行へ分割する。
