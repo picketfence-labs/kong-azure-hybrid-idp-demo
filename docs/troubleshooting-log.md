@@ -260,5 +260,6 @@
 - **AD FS結果オブジェクト**: `Test-AdfsFarmInstallation`の読み取り専用実測は、`Microsoft.IdentityServer.Deployment.Core.Result`を4件返した。各結果は`Message`、`Context`、`Status`を持ち、無効な既存証明書を使った診断では`Success` 3件と`Error` 1件だった。現行スクリプトは結果を明示評価していなかったため、全件`Success`でなければ停止する共通判定を`Test-AdfsFarmInstallation`と`Install-AdfsFarm`へ追加する。
 - **全経路の修正**: 証明書検索をデモ専用FriendlyNameと安全なSAN/EKU検査へ限定した。gMSAのローカル導入は再実行可能にし、AD FS discoveryは最大60秒再試行する。Windows機能の導入後は、DNS、OU、gMSA、証明書のread-only inventoryまで行うdeep preflightを`-Apply`なしで実行し、すべて通過するまで変更処理へ進まない。
 - **回帰テストの初回失敗**: deep preflightより前に変更cmdletがないことを検査するテストが、文字列tokenの`Text`に含まれる引用符を考慮せずmarkerを見つけられなかった。製品スクリプトの検査へ進む前に停止した。文字列ASTの`Value`を使う境界検出へ変更した。
+- **Windows PowerShell 5.1検証**: branch上の構成スクリプトと回帰テストをVMの一意な一時フォルダーへ取得し、Windows PowerShell 5.1で実行した。構文解析と全回帰テストが成功し、stderrは空だった。一時フォルダーは同じ実行の`finally`で削除した。DNS、AD、証明書ストア、AD FSは変更していない。
 - **対処・回避方法**: サービス削除や`OverwriteConfiguration`は使わない。構成完了フラグと`Get-AdfsProperties`で既存ファームを検出し、`Stopped`、`Manual`のロール導入済み状態だけ再開を許可する。その他の判定不能なサービス状態は停止する。適用前にWindows PowerShell 5.1、管理者昇格、ドメインユーザーUPNも検証する。
 - **Runbook修正**: `C:\KongDemo\adfs`はTerraformで作成されないことを明記し、レビュー済みcommitからの取得コマンドを追加した。Windowsへのサインインをローカル管理者からドメイン管理者へ切り替える手順と、`whoami.exe /upn`による確認も追加した。
