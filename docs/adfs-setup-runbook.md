@@ -43,13 +43,17 @@ Terraform（`terraform/adfs_domain_controller.tf`）が次の順序で自動構�
    Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Verb RunAs
    ```
 
-4. 新しく開いたウィンドウで、Windows PowerShell 5.1であることを確認する。
+4. 新しく開いたウィンドウで、Windows PowerShell 5.1であることを確認する。パイプ・カンマを含む1行のコマンドはRDPのクリップボード貼り付けで改行が分割され`>>`の継続入力プロンプトへ入ったまま結果が空になることがあるため、1コマンドずつ分けて貼り付ける。
 
    ```powershell
-   $PSVersionTable | Select-Object PSEdition, PSVersion
+   $PSVersionTable.PSEdition
    ```
 
-   `PSEdition`が`Desktop`、`PSVersion`が`5.1`であることを確認する。
+   ```powershell
+   $PSVersionTable.PSVersion
+   ```
+
+   1つ目が`Desktop`、2つ目が`5.1`から始まることを確認する。`>>`が表示され結果が出ない場合は、空行のままEnterを2回押すかCtrl+Cで通常のプロンプトへ戻してから再実行する。
 
 5. 現在のWindowsユーザーがドメイン管理者のUPNであることを確認する。
 
