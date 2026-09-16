@@ -116,6 +116,14 @@ services:
           - name: openid-connect
             config:
               issuer: "${{ env "DECK_ADFS_ISSUER" }}"
+              # ADFSはaccess tokenのiss claimに、discoveryのissuer（config.issuer）とは異なる
+              # WS-Trust由来のレガシー値（http://<FQDN>/adfs/services/trust）を発行する仕様がある
+              # （id_tokenのissuerはconfig.issuerと一致するが、access tokenは一致しない）。
+              # 実機で"invalid issuer ... was specified for access token"を確認済み
+              # （docs/troubleshooting-log.md参照）。両方のissuerを許容する。
+              issuers_allowed:
+                - "${{ env "DECK_ADFS_ISSUER" }}"
+                - "http://adfs.adfsdemo.picketfencelabs.local/adfs/services/trust"
               client_id:
                 - "${{ env "DECK_ADFS_CLIENT_ID" }}"
               client_secret:
