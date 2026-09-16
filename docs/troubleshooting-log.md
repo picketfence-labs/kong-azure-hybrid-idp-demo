@@ -276,3 +276,10 @@
 - **PR準備時の認証停止**: 設計記録commitの最初のHTTPS pushは`Invalid username or token`で停止し、remoteを変更しなかった。値を表示せず認証元を確認すると、`GITHUB_TOKEN`環境変数と`~/.config/gh/hosts.yml`の両方をGitHub CLIが無効と判定した。環境変数を除外するだけでは解消しなかった。既存SSH認証による同じrepositoryの`ls-remote`は成功したため、remote設定を変更せず、pushコマンドだけSSH URLを使用した。SSH pushは成功し、設計記録branchを作成できた。
 - **GitHub CLI再認証**: 最初のdevice codeは利用者確認を待つ間に期限切れとなり、GitHubの許可ボタンが無効になった。次の試行は既存の失敗画面を再利用した状態で入力と送信を同時に行い、GitHubが`not_found`を返した。3回目はaccount selectionからdevice画面を開き直し、入力結果を確認してから送信した。passkey認証後、keyringへの保存、`repo` scope、対象repositoryの`ADMIN`権限を確認した。codeやtoken値は記録していない。
 - **HTTPS Git認証の復旧**: GitHub CLI再認証後も、最初のHTTPS pushはmacOSの既存credential helperを使って認証エラーになった。`gh auth setup-git`でGitHub向けhelperをGitHub CLIへ設定し、コマンド環境から無効な`GITHUB_TOKEN`を除外するとHTTPS pushが成功した。repositoryのremote URLは変更していない。
+
+## 2026-09-16 destroy終盤でEntra application identifier URI削除が一時的な404になった
+
+- **何を期待していたか**: `terraform destroy -var-file=adfs.tfvars`が、planで確認した58リソースを1回で削除し、空のstateで正常終了すること。
+- **実際どうだったか**: Azureの両リソースグループ、Entra Domain Services、VM、Azure OpenAI、および大半のEntraオブジェクトは削除されたが、`azuread_application_identifier_uri.downstream_api`の削除でMicrosoft Graphが`Request_ResourceNotFound`を返し、初回destroyは終了コード1になった。Terraform stateにはdownstream APIのapplicationとidentifier URIの2件が残った。
+- **調査結果**: 直後のMicrosoft Graph照合では、stateと同じobject IDのdownstream API applicationとidentifier URIが実在していた。他の対象EntraオブジェクトとAzureリソースグループは残っていなかった。このため、実リソース消失ではなく、並行削除中のMicrosoft GraphまたはAzureAD providerから見た一時的な整合性のずれと判断した。
+- **対処・解決確認**: 残存2件を確認してから同じdestroyを再実行した。identifier URIとapplicationは順に削除され、`Destroy complete! Resources: 2 destroyed.`で正常終了した。手動削除や`terraform state rm`は行っていない。
