@@ -376,3 +376,10 @@ Section 2手順10（`.\Configure-AdfsDemoFarm.ps1 -Apply`）の初回実行か�
 - **実際どうだったか**: `/etc/hosts`への追記自体はエラーなく完了したが、`dig +short`は何も返さなかった（利用者が実機で報告）。
 - **原因の特定**: `dig`はOSのリゾルバ（`/etc/hosts`・`nsswitch`相当の設定）を経由せず、直接DNSサーバーへ問い合わせるツールである。`adfsdemo.picketfencelabs.local`は実在のDNSに登録されていないため、`/etc/hosts`の設定が正しくても`dig`は常に無応答になる。実際に`grep adfsdemo /etc/hosts`でエントリが存在すること、`dscacheutil -q host -a name adfs.adfsdemo.picketfencelabs.local`（`/etc/hosts`を反映するmacOSのNS解決キャッシュに問い合わせるツール）で正しいIP（`4.216.110.53`）が返ることを確認し、`/etc/hosts`の設定自体は最初から正しく機能していたと判明した（`ping`は無応答だったが、これはAzure NSGがICMPを許可していないためで想定内）。
 - **対処・解決確認**: `docs/adfs-setup-runbook.md`Section 2手順13の確認コマンドを`dig +short`から`dscacheutil -q host -a name`へ修正した。あわせて、利用者の`/etc/hosts`に同一エントリが2行重複していることに気づいたが、動作に影響はないため利用者の任意のタイミングでの整理に委ねた（削除は`sudo`操作のため利用者側で実施）。
+
+## 2026-09-16 Test-AdfsDemo.ps1の`displayName`フィルタが5人のデモユーザーを0件と誤検出する
+
+- **何を期待していたか**: Section 4の`.\Test-AdfsDemo.ps1`（読み取り専用の検証スクリプト、`az vm run-command invoke`で実行）が、Section 3までに作成済みの5人のデモユーザー（`demo-it`/`demo-sales`/`demo-new-business`/`demo-policy-admin`/`demo-claim`）を`Expected five demo users, found 5.`として検出すること。
+- **実際どうだったか**: `WARNING: Expected five demo users, found 0.`となり検証が失敗した。
+- **原因の特定**: `Test-AdfsDemo.ps1`は`Get-ADUser -LDAPFilter "(displayName=Demo User - *)"`で検索していたが、`New-AdDsDomainObjects.ps1`（Section 1でフォレスト昇格時に実行済み）は`New-ADUser -Name "Demo User - $Department"`のみを指定しており、`-Name`はCN（`name`属性）を設定するだけで`displayName`属性は自動設定されない。実機で`Get-ADUser -Filter "SamAccountName -like 'demo-*'" -Properties Name,DisplayName,department`を実行したところ、5人とも`Name`・`department`は意図通り設定済みだが`DisplayName`が空であることを確認した。ユーザー作成自体（Section 1の実装）に不備はなく、検証スクリプト側のクエリ条件の誤りだった。
+- **対処・解決確認**: `Test-AdfsDemo.ps1`のフィルタを`Get-ADUser -Filter "SamAccountName -like 'demo-*'"`（`New-AdDsDomainObjects.ps1`が実際に使っている命名規則と一致）へ修正した。修正後のクエリで実機から5人・正しい`department`値が返ることを確認済み（`demo-it`→`it`等）。VM上の`C:\KongDemo\adfs\Test-AdfsDemo.ps1`は古いレビュー済みcommitから取得済みのため、このPRのマージ後は新しいcommit SHAで再取得（Section 1手順6と同じ方法）してから使うこと。

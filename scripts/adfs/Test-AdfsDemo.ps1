@@ -106,7 +106,7 @@ if ($null -eq $permission) {
 }
 
 $demoUsers = @(
-    Get-ADUser -LDAPFilter "(displayName=Demo User - *)" -Properties department, userPrincipalName |
+    Get-ADUser -Filter "SamAccountName -like 'demo-*'" -Properties department, userPrincipalName |
         Select-Object userPrincipalName, department |
         Sort-Object userPrincipalName
 )
