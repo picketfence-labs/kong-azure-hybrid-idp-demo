@@ -153,14 +153,17 @@ Terraform（`terraform/adfs_domain_controller.tf`）が次の順序で自動構�
     ```
 
 12. 管理端末とKongコンテナのtrust storeへ公開証明書を登録する。デモ終了時に削除できるよう、thumbprintと登録先だけを記録する。
-    - **管理端末（macOS、Firefoxの証明書ストア）**: macOSのSystemキーチェーンではなく、**Firefox自身が持つ独立した証明書ストア**へ登録する。MDM管理端末では`security add-trusted-cert`によるSystemキーチェーンへの信頼設定がポリシーで実質的に無効化されている場合があり（コマンドが`exit 0`で終わっても`security dump-trust-settings -d`に反映されない事象を実機で確認済み。[troubleshooting-log](troubleshooting-log.md)参照）、Firefoxの証明書ストアはOSのポリシーに依存しないため確実に機能する。ADFSへの手動確認は必ずFirefoxから行う（Safari/ChromeはOSのSystemキーチェーンに依存するため、この方式では警告が消えない）。
+    - **管理端末（macOS、Firefoxのサーバー例外登録）**: この証明書は`X509v3 Basic Constraints`（`CA:TRUE`）を持たないリーフ証明書（ADFSが自己署名で生成した通常のSSLサーバー証明書）のため、Firefoxの「認証局証明書」タブへのインポートは`この証明書は認証局の証明書ではないため、認証局の一覧には追加できません`というエラーで拒否される（実機で確認済み。[troubleshooting-log](troubleshooting-log.md)参照）。認証局として登録するのではなく、**ホスト単位の証明書例外**として登録する。あわせて、macOSのSystemキーチェーンでは`security add-trusted-cert`による信頼設定がMDM管理端末のポリシーで実質的に無効化されている場合があるため（コマンドが`exit 0`で終わっても`security dump-trust-settings -d`に反映されない事象を実機で確認済み）、Firefox側の例外登録で完結させる。ADFSへの手動確認は必ずFirefoxから行う（Safari/ChromeはOSのSystemキーチェーンに依存するため、この方式では警告が消えない）。
 
-      1. Firefoxで`about:preferences#privacy`を開く
-      2. 「証明書」→「証明書を表示」→「認証局証明書」タブ→「インポート」
-      3. `certs/adfs-demo-root.pem`を選択する
-      4. 表示されるダイアログで「この認証局によってウェブサイトが識別されることを信頼する」にチェックし、OK
+      この手順はFirefoxが実際にホストへ接続して証明書を取得するため、先に**手順13**（`/etc/hosts`によるDNS解決）を完了させてから実施する。
 
-      削除する場合は同じダイアログから対象の証明書を選択し「削除または信頼しない」を実行する（Subject `CN=adfs.adfsdemo.picketfencelabs.local`と一致することを確認してから実行する）。
+      1. 手順13を先に完了させ、`adfs.adfsdemo.picketfencelabs.local`がADFS VMのPublic IPへ解決することを確認する
+      2. Firefoxで`about:preferences#privacy`を開く
+      3. 「証明書」→「証明書を表示」→「サーバー」タブ→「追加」
+      4. ホスト名に`adfs.adfsdemo.picketfencelabs.local:443`を入力し「証明書を取得」
+      5. 表示された証明書のSHA-256フィンガープリントが手順11で記録した値と一致することを確認してから「セキュリティ例外を承認」
+
+      削除する場合は同じ「サーバー」タブから対象のエントリを選択し「削除」を実行する。
     - **Kongコンテナ**: `docker-compose.yml`の`kong`サービスが`certs/adfs-demo-root.pem`を`/etc/kong/adfs-demo-root.pem`としてマウントし、`KONG_LUA_SSL_TRUSTED_CERTIFICATE=system,/etc/kong/adfs-demo-root.pem`で追加信頼する設定を既に含む（`tls_verify=false`は使わない、ADR-0004）。手順11でファイルを配置すれば、`docker compose up`時に自動的に読み込まれる。証明書を入れ替えた場合は`docker compose up -d kong`でコンテナを再作成する（マウントはファイル単位のため`restart`では再読込されない場合がある）。
 
 13. `adfs.adfsdemo.picketfencelabs.local`を、管理端末とKongコンテナの両方からADFS VMのPublic IPへ解決させる。ADFSは自己署名証明書のFQDN固定のみでパブリックDNSに登録しないため（ADR-0004）、双方とも固定エントリで解決させる。
@@ -235,7 +238,7 @@ ADFSファームとApplication Groupの静的状態はVM上で確認します。
 
 ## 5. Kongとブラウザの疎通
 
-管理端末では自己署名証明書をFirefoxの証明書ストアへ登録している（Section 2手順12）。Safari/ChromeはmacOSのSystemキーチェーンに依存し、MDM管理端末ではその信頼設定がポリシーで無効化される場合があるため（[troubleshooting-log](troubleshooting-log.md)参照）、以降のブラウザ試験は**Firefoxで行う**。
+管理端末では自己署名証明書をFirefoxのサーバー例外として登録している（Section 2手順12。証明書が`CA:TRUE`を持たないリーフ証明書のため認証局としては登録できない）。Safari/ChromeはmacOSのSystemキーチェーンに依存し、MDM管理端末ではその信頼設定がポリシーで無効化される場合があるため（[troubleshooting-log](troubleshooting-log.md)参照）、以降のブラウザ試験は**Firefoxで行う**。
 
 - [ ] NSG許可元からブラウザとKongがdiscovery/JWKS/token endpointへ到達し、TLSを検証できる。
 - [ ] NSG許可外からADFSへ到達しない。RDPなど管理経路と公開OIDCを別に点検する。
