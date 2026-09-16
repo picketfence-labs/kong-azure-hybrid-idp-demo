@@ -5,7 +5,10 @@
 # `NT AUTHORITY\SYSTEM`はAD DSオブジェクト操作についてDomain Admin相当の権限を持つため、
 # 追加の資格情報は不要。
 #
-# 冪等性: 各アカウントは`SamAccountName`の存在チェックを行い、既に存在する場合は作成をスキップする。
+# 冪等性: 各アカウントは`SamAccountName`の存在チェックを行い、既に存在する場合は作成をスキップするが、
+# パスワードはTerraformが管理する値（引数で渡された値）へ常に同期する。random_password.*が
+# 再採番されて再applyされた場合に、AD側の実パスワードとTerraform state/outputの値がずれたまま
+# 放置される問題が実機で発生したため（docs/troubleshooting-log.md参照）。
 # 実行後、自身を起動時に実行するスケジュールタスク（存在する場合）を登録解除する。
 
 param(
@@ -25,7 +28,10 @@ try {
     Import-Module ActiveDirectory
 
     if (Get-ADUser -Filter "SamAccountName -eq '$DomainAdminUsername'" -ErrorAction SilentlyContinue) {
-        Write-Output "$DomainAdminUsername は既に存在します。作成をスキップします。"
+        Write-Output "$DomainAdminUsername は既に存在します。パスワードをTerraform管理値へ同期します。"
+        Set-ADAccountPassword -Identity $DomainAdminUsername -Reset `
+            -NewPassword (ConvertTo-SecureString $DomainAdminPassword -AsPlainText -Force)
+        Set-ADUser -Identity $DomainAdminUsername -Enabled $true -PasswordNeverExpires $true -ChangePasswordAtLogon $false
     }
     else {
         Write-Output "ドメイン管理者アカウント $DomainAdminUsername を作成します。"
@@ -34,15 +40,17 @@ try {
             -UserPrincipalName "$DomainAdminUsername@$DomainDnsName" `
             -AccountPassword (ConvertTo-SecureString $DomainAdminPassword -AsPlainText -Force) `
             -Enabled $true -PasswordNeverExpires $true -ChangePasswordAtLogon $false
-        Add-ADGroupMember -Identity "Domain Admins" -Members $DomainAdminUsername
     }
+    Add-ADGroupMember -Identity "Domain Admins" -Members $DomainAdminUsername
 
     $TestUsers = $TestUsersJson | ConvertFrom-Json
     foreach ($Department in $TestUsers.PSObject.Properties.Name) {
         $SamAccountName = "demo-$Department"
 
         if (Get-ADUser -Filter "SamAccountName -eq '$SamAccountName'" -ErrorAction SilentlyContinue) {
-            Write-Output "$SamAccountName は既に存在します。作成をスキップします。"
+            Write-Output "$SamAccountName は既に存在します。パスワードをTerraform管理値へ同期します。"
+            Set-ADAccountPassword -Identity $SamAccountName -Reset `
+                -NewPassword (ConvertTo-SecureString $TestUsers.$Department -AsPlainText -Force)
             continue
         }
 

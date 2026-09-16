@@ -309,3 +309,16 @@ PR #25マージ後、利用者承認を得て`terraform apply -var-file=adfs.tfv
   - **対処・解決確認**: `time_static`リソースで作成時刻を1回だけ固定し、それを`start`/`expiry`の基準に使うよう変更した。以降`terraform plan`は`No changes`で安定した。
 
 **最終確認（実測）**: `az vm run-command invoke`で`vm-dc-demo`に読み取り専用コマンドを実行し、`DomainRole=5`（フォレスト昇格済み）、`adfs-domain-admin`と5テストユーザー（`demo-it`/`demo-sales`/`demo-new-business`/`demo-policy-admin`/`demo-claim`、いずれも`department`属性設定済み）の存在、`adfs-domain-admin`が`Domain Admins`メンバーであることを確認した。`vm-adfs-demo`でも同様に`PartOfDomain=True`、`Domain=adfsdemo.picketfencelabs.local`、FQDN`vm-adfs-demo.adfsdemo.picketfencelabs.local`を確認した。`Install-ADDSForest`は昇格対象サーバーのローカル管理者アカウント（`adfsvmadmin`）も`Domain Admins`へ引き継ぐ（Windows標準の仕様）ため、`adfs-domain-admin`と並んでこのアカウントも`Domain Admins`に含まれることを確認済み（想定外ではなく仕様通り）。
+
+## 2026-09-16 `adfs-domain-admin`のRDPログインが失敗し、パスワード同期バグとCLIパラメータ経由の露出2件が判明した
+
+- **何を期待していたか**: `terraform output adfs_domain_admin_credentials`のUPN・パスワードで、`vm-dc-demo`・`vm-adfs-demo`いずれへもRDPログインできること。
+- **実際どうだったか**: 両VMとも`The Credentials Did Not Work`で拒否された。`az vm run-command invoke`（読み取り専用）で`adfs-domain-admin`のAD属性を確認すると、`BadPwdCount=7`（AD側が実際に比較・拒否した実測値）かつ`PasswordLastSet`がアカウント作成時刻から一度も変わっていなかった。
+- **原因確定**: `scripts/adfs/New-AdDsDomainObjects.ps1`のアカウント作成ロジックが「`SamAccountName`が既に存在すれば作成をスキップ」という設計で、パスワードをTerraform管理値へ同期する処理を持っていなかった。PR #26のバグ対応中に発生した複数回の`terraform apply`試行のいずれかで、AD側へ実際に反映された時点のパスワードと、収束後にstateへ残ったパスワードがずれた（テストユーザー5名の作成ロジックも同じ設計だったため、同種のズレが理論上あり得る状態だった）。
+- **調査・復旧作業中の事故（パスワード露出2件）**: 原因切り分けと復旧のため`az vm run-command invoke`を使う過程で、パスワードを平文でCLI引数として扱い、このセッションのツール出力へ2回露出させてしまった。1回目は`--protected-parameters`という当該azバージョンの`vm run-command invoke`には存在しないオプションを指定し、CLIの引数解析エラーメッセージにその場でパスワードが含まれて出力された。2回目は`--parameters`経由でパスワードを渡した際、値に含まれる特殊文字（`!`・`)`等）をWindows側のコマンドライン解析が誤って分割し、`'<password>' is not recognized as an internal or external command`という形でやはり実際の値がそのままエラー出力に含まれた。**教訓**: `az vm run-command invoke`の`--parameters`／`--protected-parameters`は特殊文字を含む値の受け渡しに使わない。値はローカルの一時ファイルへ書き出し（Bashのheredocで変数展開し、コマンド引数には出さない）、`--scripts @{file}`で読み込ませる方式に統一する（Terraform側で既に実績のある`-EncodedCommand`方式と同じ考え方）。
+- **対処・解決確認**:
+  1. `scripts/adfs/New-AdDsDomainObjects.ps1`を修正し、アカウントが既存でも`Set-ADAccountPassword -Reset`でTerraform管理値へ常に同期するよう変更（ドメイン管理者・テストユーザー5名とも）。
+  2. 2回露出した値をこれ以上使い続けないよう、`terraform apply -var-file=adfs.tfvars -replace="random_password.domain_join_admin"`でパスワードを再採番（承認済み）。これにより`azurerm_storage_blob.new_ad_ds_domain_objects`（修正後のスクリプト内容）と、`bootstrap_dc`・`domain_join`両拡張機能の`protected_settings`が更新され、`vm-dc-demo`上で修正後のスクリプトが再実行された。
+  3. ローカルの一時ファイル方式で`System.DirectoryServices.AccountManagement.PrincipalContext.ValidateCredentials`を`vm-dc-demo`上で実行し、新しいパスワードがAD側の実際の値と一致すること（`ValidateCredentials=True`）を確認した。`vm-adfs-demo`は`domain_join`拡張機能の再実行後も`PartOfDomain=True`のまま（ドメイン再参加は問題なく冪等だった）。
+  4. `terraform plan -var-file=adfs.tfvars`は`No changes`に収束済み。
+  5. 検証・復旧に使ったローカルの一時スクリプト・ログファイル（平文パスワードを含む）はすべて削除済み。
