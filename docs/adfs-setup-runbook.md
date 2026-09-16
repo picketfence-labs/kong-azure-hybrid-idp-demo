@@ -25,36 +25,93 @@ VM作成・ドメイン参加までと、ADFSサービス設定の完了を別�
 [ADR-0004](decisions/0004-adfs-farm-identity-and-tls.md)で、専用FQDN、自己署名証明書、gMSAを採択しました。自己署名証明書はこのデモだけで信頼します。`tls_verify=false`やブラウザ警告の無視は使いません。
 
 1. `terraform output`からADFS VMのPublic IP、ドメイン管理者UPN、パスワードを安全に取得する。パスワードを画面、シェル履歴、文書へ貼らない。
-2. 許可した管理端末からVMへRDP接続する。`adfs-domain-admin`でサインインし、管理者としてWindows PowerShell 5.1を開く。ローカル管理者は復旧時だけ使う。
-3. レビュー済みcommitの`scripts/adfs/`をVMの`C:\KongDemo\adfs`へコピーする。署名されていない別ファイルへ置き換えない。
-4. 変更前のpreflightを実行する。
+2. 許可した管理端末からVMへRDP接続する。Windowsのサインイン画面では`adfs-domain-admin`のUPNを使う。`vm-adfs-demo\adfsvmadmin`はローカル管理者なので使わない。
+3. スタートメニューで`Windows PowerShell`を検索し、右クリックして「管理者として実行」を選ぶ。`PowerShell 7`は使わない。非管理者のシェルを開いている場合は、次のコマンドでもWindows PowerShell 5.1を管理者として起動できる。
+
+   ```powershell
+   Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Verb RunAs
+   ```
+
+4. 新しく開いたウィンドウで、Windows PowerShell 5.1であることを確認する。
+
+   ```powershell
+   $PSVersionTable | Select-Object PSEdition, PSVersion
+   ```
+
+   `PSEdition`が`Desktop`、`PSVersion`が`5.1`であることを確認する。
+
+5. 現在のWindowsユーザーがドメイン管理者のUPNであることを確認する。
+
+   ```powershell
+   whoami.exe /upn
+   ```
+
+   UPNではなく「current logged-on user is not a domain user」と表示された場合は、PowerShellだけでなくWindowsからサインアウトし、手順2からやり直す。
+
+6. レビュー済みcommitの`scripts/adfs/`をVMの`C:\KongDemo\adfs`へコピーする。このフォルダーはTerraformでは作成されない。RDPのファイルコピーを使わない場合は、レビューした40文字のcommit SHAを指定してGitHubから3ファイルを取得する。
+
+   ```powershell
+   $Commit = "<reviewed-40-character-commit-sha>"
+   ```
+
+   ```powershell
+   New-Item -ItemType Directory -Path C:\KongDemo\adfs -Force
+   ```
+
+   ```powershell
+   $BaseUri = "https://raw.githubusercontent.com/picketfence-labs/kong-azure-hybrid-idp-demo/$Commit/scripts/adfs"
+   ```
+
+   ```powershell
+   Invoke-WebRequest -Uri "$BaseUri/Configure-AdfsDemoFarm.ps1" -OutFile C:\KongDemo\adfs\Configure-AdfsDemoFarm.ps1
+   ```
+
+   ```powershell
+   Invoke-WebRequest -Uri "$BaseUri/Register-KongDemoApplication.ps1" -OutFile C:\KongDemo\adfs\Register-KongDemoApplication.ps1
+   ```
+
+   ```powershell
+   Invoke-WebRequest -Uri "$BaseUri/Test-AdfsDemo.ps1" -OutFile C:\KongDemo\adfs\Test-AdfsDemo.ps1
+   ```
+
+   commit SHAはブランチ名や`main`へ置き換えない。取得元とレビュー対象を同じrevisionに固定する。
+
+7. 作業ディレクトリへ移動する。
 
    ```powershell
    Set-Location C:\KongDemo\adfs
+   ```
+
+8. 変更前のpreflightを実行する。
+
+   ```powershell
    .\Configure-AdfsDemoFarm.ps1
    ```
 
-5. 出力が次の値と一致することを確認する。
+9. 出力が次の値と一致することを確認する。
 
    | 項目 | 期待値 |
    |---|---|
    | Domain | `adfsdemo.picketfencelabs.local` |
+   | Current domain user | `adfs-domain-admin`のUPN |
    | Computer FQDN | `vm-adfs-demo.adfsdemo.picketfencelabs.local` |
    | Federation Service name | `adfs.adfsdemo.picketfencelabs.local` |
    | Server IPv4 | Terraform管理下のADFS VM内部IP |
-   | AD FS role | 初回は`Available` |
+   | AD FS role | 初回は`Available`。中断後の再実行では`Installed` |
 
-6. 値を確認してから、ADFSロール、DNS Aレコード、gMSA、証明書、ファームを作成する。
+10. 値を確認してから、ADFSロール、DNS Aレコード、gMSA、証明書、ファームを作成する。
 
    ```powershell
    .\Configure-AdfsDemoFarm.ps1 -Apply
    ```
 
-   スクリプトは`OverwriteConfiguration`を使いません。既存ADFSサービス、別IPの同名DNSレコード、別所有者のSPNを検出した場合は停止します。
+   AD FSロールのインストール直後は、ファーム未構成でも`adfssrv`サービスが`Stopped`、`Manual`で存在する。これは正常であり、サービスを削除しない。処理がロール導入後に中断した場合は、同じドメイン管理者セッションから修正版スクリプトを再実行する。`The AD FS role is installed, but no configured farm was detected. Continuing.`と表示され、残りの構成へ進む。
 
-7. VM上の`C:\ProgramData\KongDemo\adfs-demo-root.cer`を管理端末へコピーする。秘密鍵を含むPFXはエクスポートしない。
-8. 管理端末とKongコンテナのtrust storeへ公開証明書を登録する。デモ終了時に削除できるよう、thumbprintと登録先だけを記録する。
-9. `adfs.adfsdemo.picketfencelabs.local`を、管理端末とKongコンテナの両方からADFS VMのPublic IPへ解決させる。コンテナ側は後続のCompose設定で検証し、ホストOSの設定だけで完了扱いにしない。
+   スクリプトは`OverwriteConfiguration`を使いません。構成済みファーム、判定できないAD FSサービス状態、別IPの同名DNSレコード、別所有者のSPNを検出した場合は停止します。
+
+11. VM上の`C:\ProgramData\KongDemo\adfs-demo-root.cer`を管理端末へコピーする。秘密鍵を含むPFXはエクスポートしない。
+12. 管理端末とKongコンテナのtrust storeへ公開証明書を登録する。デモ終了時に削除できるよう、thumbprintと登録先だけを記録する。
+13. `adfs.adfsdemo.picketfencelabs.local`を、管理端末とKongコンテナの両方からADFS VMのPublic IPへ解決させる。コンテナ側は後続のCompose設定で検証し、ホストOSの設定だけで完了扱いにしない。
 
 ## 3. Application GroupとAPI資源
 

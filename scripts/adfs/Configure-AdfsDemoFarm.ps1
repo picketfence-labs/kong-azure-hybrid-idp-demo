@@ -16,6 +16,48 @@ function Assert-LocalAdministrator {
     }
 }
 
+function Assert-WindowsPowerShell {
+    if ($PSVersionTable.PSEdition -ne "Desktop" -or $PSVersionTable.PSVersion.Major -ne 5) {
+        throw "Run this script from Windows PowerShell 5.1, not PowerShell 7."
+    }
+}
+
+function Get-CurrentDomainUserUpn {
+    $upn = (& whoami.exe /upn 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($upn)) {
+        throw "Sign in to Windows with a domain account, then run this script from an elevated Windows PowerShell 5.1 session."
+    }
+    return $upn
+}
+
+function Get-AdfsFarmConfigurationState {
+    $service = Get-CimInstance Win32_Service -Filter "Name = 'adfssrv'"
+    if ($null -eq $service) {
+        return "RoleNotInstalled"
+    }
+
+    $configurationCompleted = Get-ItemPropertyValue `
+        -Path "HKLM:\SYSTEM\CurrentControlSet\Services\adfssrv" `
+        -Name "InitialConfigurationCompleted" `
+        -ErrorAction SilentlyContinue
+    if ($configurationCompleted -eq 1 -or "$configurationCompleted" -eq "TRUE") {
+        return "Configured"
+    }
+
+    try {
+        $properties = Get-AdfsProperties -ErrorAction Stop
+        if ($null -ne $properties) {
+            return "Configured"
+        }
+    } catch {
+        if ($service.State -ne "Stopped" -or $service.StartMode -ne "Manual") {
+            throw "The AD FS service exists in an ambiguous state ($($service.State), $($service.StartMode)). Inspect the existing AD FS configuration before continuing."
+        }
+    }
+
+    return "RoleInstalledOnly"
+}
+
 function Get-ServerIpv4Address {
     param([string]$ComputerFqdn)
 
@@ -30,7 +72,9 @@ function Get-ServerIpv4Address {
     return $addresses[0]
 }
 
+Assert-WindowsPowerShell
 Assert-LocalAdministrator
+$currentUserUpn = Get-CurrentDomainUserUpn
 
 $computer = Get-CimInstance Win32_ComputerSystem
 if (-not $computer.PartOfDomain -or $computer.Domain -ne $DomainName) {
@@ -53,6 +97,7 @@ $featureState = Get-WindowsFeature -Name $requiredFeatures
 $missingFeatures = @($featureState | Where-Object InstallState -ne "Installed")
 
 Write-Host "Domain: $DomainName"
+Write-Host "Current domain user: $currentUserUpn"
 Write-Host "Computer FQDN: $computerFqdn"
 Write-Host "Federation Service name: $FederationServiceName"
 Write-Host "Server IPv4: $serverIpv4"
@@ -81,8 +126,12 @@ Import-Module ADFS
 
 $domain = Get-ADDomain -Identity $DomainName
 
-if (Get-Service adfssrv -ErrorAction SilentlyContinue) {
-    throw "The AD FS service already exists. This script does not overwrite an existing farm."
+$adfsFarmState = Get-AdfsFarmConfigurationState
+if ($adfsFarmState -eq "Configured") {
+    throw "An AD FS farm is already configured. This script does not overwrite an existing farm."
+}
+if ($adfsFarmState -eq "RoleInstalledOnly") {
+    Write-Host "The AD FS role is installed, but no configured farm was detected. Continuing."
 }
 
 $recordName = $FederationServiceName.Substring(0, $FederationServiceName.Length - $DomainName.Length - 1)
