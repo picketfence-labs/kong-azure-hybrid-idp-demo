@@ -174,7 +174,16 @@ if ($serverIpv4 -notin $resolvedFederationAddresses) {
 
 $serviceOuName = "Kong Demo Service Accounts"
 $serviceOuDn = "OU=$serviceOuName,$($domain.DistinguishedName)"
-if (-not (Get-ADOrganizationalUnit -Identity $serviceOuDn -ErrorAction SilentlyContinue)) {
+$serviceOus = @(
+    Get-ADOrganizationalUnit `
+        -Filter { Name -eq $serviceOuName } `
+        -SearchBase $domain.DistinguishedName `
+        -SearchScope OneLevel
+)
+if ($serviceOus.Count -gt 1) {
+    throw "Multiple service account OUs named $serviceOuName were found directly under the domain root."
+}
+if ($serviceOus.Count -eq 0) {
     New-ADOrganizationalUnit `
         -Name $serviceOuName `
         -Path $domain.DistinguishedName `
@@ -183,7 +192,18 @@ if (-not (Get-ADOrganizationalUnit -Identity $serviceOuDn -ErrorAction SilentlyC
 
 $gmsaName = "adfssvc"
 $gmsaDnsHostName = "$gmsaName.$DomainName"
-$gmsa = Get-ADServiceAccount -Identity $gmsaName -Properties DNSHostName, ServicePrincipalNames -ErrorAction SilentlyContinue
+$gmsaSamAccountName = "$gmsaName`$"
+$gmsaMatches = @(
+    Get-ADServiceAccount `
+        -Filter { SamAccountName -eq $gmsaSamAccountName } `
+        -SearchBase $domain.DistinguishedName `
+        -SearchScope Subtree `
+        -Properties DNSHostName, ServicePrincipalNames
+)
+if ($gmsaMatches.Count -gt 1) {
+    throw "Multiple gMSAs with SAM account name $gmsaSamAccountName were found."
+}
+$gmsa = $gmsaMatches | Select-Object -First 1
 $computerAccount = Get-ADComputer -Identity $env:COMPUTERNAME
 $requiredSpns = @("HOST/$FederationServiceName", "HOST/$recordName")
 
