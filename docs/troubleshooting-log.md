@@ -252,5 +252,6 @@
 - **原因**: AD FSロールの導入とファームの構成は別工程であり、ロールを導入した時点でファーム未構成でも`adfssrv`サービスが作成される。スクリプトの既存ファーム判定がサービスの存在だけを確認していたため、正常な中断再開状態を誤検出した。Runbookにもスクリプト転送、ドメインユーザー確認、Windows PowerShell 5.1の昇格確認が不足していた。
 - **実測**: Azure VMの読み取り確認では、`adfssrv`は`Stopped`、`Manual`だった。`Get-AdfsProperties`と`Get-AdfsFarmInformation`は`net.tcp://localhost:1500/policy`への接続を拒否され、`FarmConfigured=False`だった。既存ファームではなく、ロールだけが導入された状態と確認した。
 - **追加確認**: 構成完了レジストリ値だけを読むAzure Run Commandは完了したが、実行クライアントへ標準出力が返らなかった。値を推測せず、この追加確認は判定根拠に含めていない。
+- **再実行時の互換性エラー**: 修正版をWindows PowerShell 5.1で実行すると、存在しない`InitialConfigurationCompleted`を`Get-ItemPropertyValue`で直接取得した箇所が`PSArgumentException`で停止した。`-ErrorAction SilentlyContinue`ではこの例外を抑止できなかった。レジストリキー全体を取得し、値の存在を`PSObject.Properties`で確認してから読む方式へ変更した。値の欠落はロール導入済み、ファーム未構成の正常な状態として扱う。
 - **対処・回避方法**: サービス削除や`OverwriteConfiguration`は使わない。構成完了フラグと`Get-AdfsProperties`で既存ファームを検出し、`Stopped`、`Manual`のロール導入済み状態だけ再開を許可する。その他の判定不能なサービス状態は停止する。適用前にWindows PowerShell 5.1、管理者昇格、ドメインユーザーUPNも検証する。
 - **Runbook修正**: `C:\KongDemo\adfs`はTerraformで作成されないことを明記し、レビュー済みcommitからの取得コマンドを追加した。Windowsへのサインインをローカル管理者からドメイン管理者へ切り替える手順と、`whoami.exe /upn`による確認も追加した。

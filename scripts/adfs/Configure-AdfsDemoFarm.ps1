@@ -36,10 +36,15 @@ function Get-AdfsFarmConfigurationState {
         return "RoleNotInstalled"
     }
 
-    $configurationCompleted = Get-ItemPropertyValue `
+    $serviceRegistry = Get-ItemProperty `
         -Path "HKLM:\SYSTEM\CurrentControlSet\Services\adfssrv" `
-        -Name "InitialConfigurationCompleted" `
-        -ErrorAction SilentlyContinue
+        -ErrorAction Stop
+    $configurationCompletedProperty = $serviceRegistry.PSObject.Properties["InitialConfigurationCompleted"]
+    $configurationCompleted = if ($null -eq $configurationCompletedProperty) {
+        $null
+    } else {
+        $configurationCompletedProperty.Value
+    }
     if ($configurationCompleted -eq 1 -or "$configurationCompleted" -eq "TRUE") {
         return "Configured"
     }
