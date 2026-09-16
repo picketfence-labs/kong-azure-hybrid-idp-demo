@@ -23,7 +23,7 @@ Entra DS＋ADFS、共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend
 | `handler.lua` / `authz.lua` | Header＋known_groups/allowed_groups。DBなし | 検証済み属性の安全な入力を証明してからDB化 |
 | `insurance-ui` | 公開shell、別画面ログイン、経路別status/logout。旧token relayは削除 | 実GatewayでCookie分離、両IdP同時利用、logout分離を確認 |
 | 図 | 改訂3、quality 9/9、ブラウザ検証済み | 実イベントadapterは未実装 |
-| 基盤 | 2026-09-15にAzure基盤を全体再構築。Entra DS稼働、ADFS VMドメイン参加、最終plan no-op。2026-09-16にAD FSロールと管理ツールを導入 | 修正版runbook Section 2で未構成のAD FSファーム作成を再開 |
+| 基盤 | 2026-09-15にAzure基盤を全体再構築。Entra DS稼働、ADFS VMドメイン参加、最終plan no-op。2026-09-16にAD FSロール、DNS、OU、gMSAまで作成 | 修正版runbook Section 2のdeep preflight後、TLS証明書と未構成のAD FSファーム作成を再開 |
 
 - [ ] デモ資格情報を確認。公開履歴に記載された有効パスワードは管理者が変更する。このPRは本文をプレースホルダー化するだけで、履歴削除/失効はしない。
 - [ ] Gatewayを起動する直前に、ライセンスを確認する。対象image source revisionは`7d95f6d021d05405e4c47244049ad21d64619201`と確認済み。
@@ -52,7 +52,7 @@ Terraform再構築は、差分レビューと利用者の明示承認後に実�
 - VNetのDNSをEntra DSのDC IPへ向ける構成を追加した。VM再起動後、DNS SRV解決とDC discoveryを確認した。
 - Entra DS有効化前に作成したcloud-onlyユーザーはNTLM/Kerberos用ハッシュを持たなかった。Group 2用6ユーザーのパスワードをin-place更新し、今後はEntra DS完了後にユーザーを作成して15分待つ依存順序へ変更した。
 - ADFS VMは`PartOfDomain=True`、対象ドメイン一致、secure channel `NERR_Success`。最終の通常planは`No changes`だった。
-- AD FSロールと管理ツールは導入済み。`adfssrv`は`Stopped`、`Manual`で、ファームは未構成と実測した。ファーム、証明書、Application Group、OIDC設定は未実施。既存ファームの誤判定を修正した[ADFS runbook](adfs-setup-runbook.md)のSection 2から再開する。
+- AD FSロールと管理ツール、DNS Aレコード、サービスアカウント用OU、gMSAは作成済み。`adfssrv`は`Stopped`、`Manual`で、ファームは未構成と実測した。TLS証明書、ファーム、Application Group、OIDC設定は未実施。Windows PowerShell 5.1実機監査を反映した[ADFS runbook](adfs-setup-runbook.md)のSection 2でdeep preflightから再開する。
 - Entra Domain Services、ADFS VM、Azure OpenAIなどが稼働中で継続コストが発生する。デモ終了後は利用者承認を得て削除する。
 
 ## 既存実装と追加要件の差分

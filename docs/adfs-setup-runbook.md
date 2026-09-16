@@ -98,6 +98,13 @@ VM作成・ドメイン参加までと、ADFSサービス設定の完了を別�
    | Federation Service name | `adfs.adfsdemo.picketfencelabs.local` |
    | Server IPv4 | Terraform管理下のADFS VM内部IP |
    | AD FS role | 初回は`Available`。中断後の再実行では`Installed` |
+   | AD FS farm state | `RoleInstalledOnly` |
+   | DNS A record | 初回は`Create`。作成後の再実行では`Reuse` |
+   | Service account OU | 初回は`Create`。作成後の再実行では`Reuse` |
+   | gMSA | 初回は`Create`。作成後の再実行では`Reuse` |
+   | TLS certificate | 初回は`Create`。有効なデモ用証明書があれば`Reuse` |
+
+   最後に`Deep preflight only. No DNS, directory, certificate, or AD FS changes were made.`と表示されることを確認する。この表示より前に停止した場合は`-Apply`を実行しない。
 
 10. 値を確認してから、ADFSロール、DNS Aレコード、gMSA、証明書、ファームを作成する。
 
@@ -105,9 +112,11 @@ VM作成・ドメイン参加までと、ADFSサービス設定の完了を別�
    .\Configure-AdfsDemoFarm.ps1 -Apply
    ```
 
+   Windows機能が未導入の場合、この実行は機能の導入だけで終了する。`Required Windows features were installed. Rerun without -Apply for the deep preflight.`と表示されたら、手順8へ戻る。deep preflightを確認せずに次の変更処理へ進まない。
+
    AD FSロールのインストール直後は、ファーム未構成でも`adfssrv`サービスが`Stopped`、`Manual`で存在する。レジストリ値`InitialConfigurationCompleted`、サービスアカウント用OU、gMSAが存在しないことも初回実行では正常である。サービス、レジストリ、ADオブジェクトを手動で変更しない。処理が中断した場合は、同じドメイン管理者セッションから修正版スクリプトを再実行する。`The AD FS role is installed, but no configured farm was detected. Continuing.`と表示され、残りの構成へ進む。
 
-   スクリプトは`OverwriteConfiguration`を使いません。構成済みファーム、判定できないAD FSサービス状態、別IPの同名DNSレコード、別所有者のSPNを検出した場合は停止します。
+   スクリプトは`OverwriteConfiguration`を使いません。構成済みファーム、判定できないAD FSサービス状態、別IPの同名DNSレコード、別所有者のSPNを検出した場合は停止します。AD FSの前提条件検査とインストール結果は、全項目が`Success`の場合だけ次へ進みます。インストール後はdiscovery endpointを最大60秒待ち、issuerまで検証します。
 
 11. VM上の`C:\ProgramData\KongDemo\adfs-demo-root.cer`を管理端末へコピーする。秘密鍵を含むPFXはエクスポートしない。
 12. 管理端末とKongコンテナのtrust storeへ公開証明書を登録する。デモ終了時に削除できるよう、thumbprintと登録先だけを記録する。
