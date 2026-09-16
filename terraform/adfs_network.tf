@@ -1,4 +1,4 @@
-# ADFS/Entra Domain Services用ネットワーク（design-brief Group2「3. アーキテクチャ」）。
+# ADFS/自己管理AD DS用ネットワーク（design-brief Group2「3. アーキテクチャ」、ADR-0005 Option A）。
 # picketfence自身のAzureサブスクリプション（terraform/adfs_providers.tf）に構築する。
 
 resource "azurerm_resource_group" "adfs" {
@@ -15,11 +15,11 @@ resource "azurerm_virtual_network" "adfs" {
   address_space       = ["10.20.0.0/16"]
 }
 
-# Microsoft Entra Domain Servicesは他のワークロードと共有できない専用のデリゲートサブネットを
-# 要求する（Microsoft公式要件）。
-resource "azurerm_subnet" "domain_services" {
+# 自己管理AD DSフォレスト用DC VMのサブネット（terraform/adfs_domain_controller.tf）。
+# Microsoft Entra Domain Services向けの専用デリゲートサブネット要件は自己管理AD DSでは不要。
+resource "azurerm_subnet" "dc_vm" {
   provider             = azurerm.picketfence
-  name                 = "snet-domain-services"
+  name                 = "snet-dc-vm"
   resource_group_name  = azurerm_resource_group.adfs.name
   virtual_network_name = azurerm_virtual_network.adfs.name
   address_prefixes     = ["10.20.0.0/24"]
@@ -34,52 +34,43 @@ resource "azurerm_subnet" "adfs_vm" {
   address_prefixes     = ["10.20.1.0/24"]
 }
 
-# Domain Services作成後に確定する2つのDC IPをVNetのDNSサーバーへ設定する。
-# standalone resourceに分けることで、VNet/subnet -> Domain Services -> DNS設定の順序を保ち、
-# VNet定義との循環依存を避ける。
+# フォレスト昇格済みのDC VMのプライベートIPをVNetのDNSサーバーへ設定する。
+# standalone resourceに分けることで、VNet/subnet -> DC VM作成・フォレスト昇格 -> DNS設定の順序を保ち、
+# VNet定義との循環依存を避ける。dc_readyへのdepends_onで、フォレスト昇格前のVMへDNSを向けない。
 resource "azurerm_virtual_network_dns_servers" "adfs" {
   provider           = azurerm.picketfence
   virtual_network_id = azurerm_virtual_network.adfs.id
-  dns_servers        = azurerm_active_directory_domain_service.this.initial_replica_set[0].domain_controller_ip_addresses
+  dns_servers        = [azurerm_network_interface.dc.private_ip_address]
+
+  depends_on = [time_sleep.dc_ready]
 }
 
-# Entra Domain Servicesの正常性監視・PowerShell Remotingに必須のNSG受信規則
-# （Microsoft公式ドキュメントが要求する必須規則。サービスタグはAzure標準のもの）。
-resource "azurerm_network_security_group" "domain_services" {
+# DC VM用NSG: RDPのみ許可（ADR-0001参照の対話runbook運用、トラブルシュート用）。
+# AD DS内部通信（DNS/Kerberos/LDAP等、ADFS VMとの通信）はVNet内暗黙のAllowVNetInBoundルールに委ねる
+# （既存ADFS VM用NSGも同じ考え方、OIDC/RDP以外の明示ルールを持たない）。
+resource "azurerm_network_security_group" "dc_vm" {
   provider            = azurerm.picketfence
-  name                = "nsg-domain-services"
+  name                = "nsg-dc-vm"
   resource_group_name = azurerm_resource_group.adfs.name
   location            = azurerm_resource_group.adfs.location
 
   security_rule {
-    name                       = "AllowSyncWithAzureAD"
-    priority                   = 101
+    name                       = "AllowRdp"
+    priority                   = 102
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
     source_port_range          = "*"
-    destination_port_range     = "443"
-    source_address_prefix      = "AzureActiveDirectoryDomainServices"
-    destination_address_prefix = "*"
-  }
-
-  security_rule {
-    name                       = "AllowPSRemoting"
-    priority                   = 201
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "5986"
-    source_address_prefix      = "AzureActiveDirectoryDomainServices"
+    destination_port_range     = "3389"
+    source_address_prefix      = var.nsg_allowed_source_cidr
     destination_address_prefix = "*"
   }
 }
 
-resource "azurerm_subnet_network_security_group_association" "domain_services" {
+resource "azurerm_subnet_network_security_group_association" "dc_vm" {
   provider                  = azurerm.picketfence
-  subnet_id                 = azurerm_subnet.domain_services.id
-  network_security_group_id = azurerm_network_security_group.domain_services.id
+  subnet_id                 = azurerm_subnet.dc_vm.id
+  network_security_group_id = azurerm_network_security_group.dc_vm.id
 }
 
 # ADFS VM用NSG: design-brief通り、Kong実行環境（および作業端末）の発信元IPのみを許可する

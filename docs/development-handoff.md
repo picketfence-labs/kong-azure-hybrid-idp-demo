@@ -5,6 +5,9 @@
 > [!info] 2026-09-16のハンドオフ要約
 > Group 2のディレクトリ基盤はEntra Domain Services→**自己管理AD DS（[ADR-0005](decisions/0005-adfs-directory-platform.md)、Option A決定）**に切り替わりました。旧Azure環境は`terraform destroy`済みで、自己管理AD DS一式は未構築です。実装再開時は本ページの「ADR-0005決定後の基盤方針」節と「自己管理AD DS移行で新たに必要な実装作業」を最初に読んでください。図版（[図版素材](assets/hybrid-idp/README.md)）も改訂4で同じ決定を反映済みです。
 
+> [!info] 2026-09-16追記: 自己管理AD DSフォレストのTerraform実装完了
+> 「自己管理AD DS移行で新たに必要な実装作業」（下記）を`terraform/adfs_domain_controller.tf`（新規）・`terraform/adfs_network.tf`・`terraform/adfs_vm.tf`・`terraform/insurance_users.tf`・`scripts/adfs/Install-AdDsForest.ps1`（新規）・`scripts/adfs/New-AdDsDomainObjects.ps1`（新規）として実装した。`docs/adfs-setup-runbook.md`のSection 1も書き換え済み。`terraform validate`・`terraform plan -var-file=adfs.tfvars`は完了（54 add / 0 change / 0 destroy、既存Group 1リソースへの意図しない差分なし）。**`terraform apply`は未実施**（別途承認が必要）。フォレスト/ドメイン名は既存の`adfsdemo.picketfencelabs.local`を再利用した（ADR-0004のFederation Service名・TLS証明書SANが依存するため）。既知の持ち越しリスクは2点: (1) フォレスト昇格の自動再起動とCustomScriptExtensionの完了報告のタイミング競合（冪等化済みで再applyによる復旧を想定）、(2) DC VM追加後の`Standard_D2als_v7`ファミリのvCPUクォータ（ADFS VMと合計4 vCPU）が東日本で足りるかは`apply`実行まで未確認。
+
 ## 正本と依存PR
 
 1. [Design Brief](design-brief.md): 現行実装との差分、Route/認可/観測の契約案。
@@ -37,7 +40,7 @@
 | `handler.lua` / `authz.lua` | Header＋known_groups/allowed_groups。DBなし | 検証済み属性の安全な入力を証明してからDB化 |
 | `insurance-ui` | 公開shell、別画面ログイン、経路別status/logout。旧token relayは削除 | 実GatewayでCookie分離、両IdP同時利用、logout分離を確認 |
 | 図 | 改訂3、quality 9/9、ブラウザ検証済み | 実イベントadapterは未実装 |
-| 基盤 | 2026-09-16、Entra DS＋ADFS一式を`terraform destroy`済み（正常終了）。[ADR-0005](decisions/0005-adfs-directory-platform.md)でOption A（自己管理AD DS）採択済み | 自己管理AD DSフォレスト用Terraformを新規作成し、ADFS VMのドメイン参加先を変更してから再構築する（上記「自己管理AD DS移行で新たに必要な実装作業」参照） |
+| 基盤 | 自己管理AD DSフォレスト用Terraform・スクリプトを実装済み（`terraform/adfs_domain_controller.tf`ほか）。`terraform validate`/`plan`確認済み、`apply`は未実施 | 承認を得て`terraform apply -var-file=adfs.tfvars`を実行し、フォレスト昇格・ドメイン参加・テストユーザー作成が実機で成功することを確認する（docs/adfs-setup-runbook.md Section 1） |
 
 - [ ] デモ資格情報を確認。公開履歴に記載された有効パスワードは管理者が変更する。このPRは本文をプレースホルダー化するだけで、履歴削除/失効はしない。
 - [ ] Gatewayを起動する直前に、ライセンスを確認する。対象image source revisionは`7d95f6d021d05405e4c47244049ad21d64619201`と確認済み。

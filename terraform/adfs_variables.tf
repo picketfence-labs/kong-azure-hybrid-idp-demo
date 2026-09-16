@@ -5,7 +5,7 @@
 # （azurerm.picketfence / azuread.picketfence、terraform/adfs_providers.tf）で管理する。
 
 variable "picketfence_azure_subscription_id" {
-  description = "ADFS/Entra Domain Services等を構築するpicketfence自身のAzureサブスクリプションID（Kong社のものとは別）"
+  description = "ADFS/自己管理AD DS等を構築するpicketfence自身のAzureサブスクリプションID（Kong社のものとは別）"
   type        = string
 }
 
@@ -20,11 +20,11 @@ variable "adfs_location" {
   default     = "japaneast"
 }
 
-variable "entra_domain_services_domain_name" {
+variable "ad_ds_domain_name" {
   description = <<-EOT
-    Microsoft Entra Domain Services（マネージドドメイン）のDNSドメイン名。
-    テナントの既定ドメイン（*.onmicrosoft.com）とは別の、どこにも登録されていない
-    ドメイン名を指定する必要がある（Microsoft公式要件）。例: "adfsdemo.picketfencelabs.local"
+    自己管理AD DSフォレスト（terraform/adfs_domain_controller.tf、ADR-0005 Option A）のDNSドメイン名。
+    外部に公開・登録されていない名前を使う（AD DSの一般的なベストプラクティス。ここでは
+    ".local"の内部限定名を使う）。例: "adfsdemo.picketfencelabs.local"
   EOT
   type        = string
 }
@@ -40,6 +40,12 @@ variable "nsg_allowed_source_cidr" {
 
 variable "adfs_vm_size" {
   description = "ADFSサーバー用VMのサイズ。東日本で利用可能な2 vCPU・4 GiBのx64最小構成"
+  type        = string
+  default     = "Standard_D2als_v7"
+}
+
+variable "dc_vm_size" {
+  description = "自己管理AD DSフォレストのDC用VMのサイズ。ADFSサーバー用VMと同じ理由（東日本のvCPUクォータ制約）で同サイズを既定値にする"
   type        = string
   default     = "Standard_D2als_v7"
 }

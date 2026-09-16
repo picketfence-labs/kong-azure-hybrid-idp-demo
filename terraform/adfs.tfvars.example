@@ -9,8 +9,8 @@
 picketfence_azure_subscription_id = ""
 picketfence_azure_tenant_id       = ""
 
-# テナントの既定ドメイン（*.onmicrosoft.com）とは別の、どこにも登録されていないドメイン名。
-entra_domain_services_domain_name = "adfsdemo.picketfencelabs.local"
+# 自己管理AD DSフォレスト（ADR-0005 Option A）のドメイン名。外部に公開・登録されていない名前を使う。
+ad_ds_domain_name = "adfsdemo.picketfencelabs.local"
 
 # Kong実行環境（および作業端末）のグローバルIP。CIDR形式（例: "203.0.113.10/32"）。
 nsg_allowed_source_cidr = ""

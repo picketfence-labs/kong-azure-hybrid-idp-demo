@@ -103,22 +103,27 @@ output "adfs_vm_local_admin_credentials" {
 output "adfs_domain_admin_credentials" {
   description = "ドメイン参加・ADFSロール/ファーム構築（docs/adfs-setup-runbook.md）で使うドメイン管理者アカウント"
   value = {
-    user_principal_name = azuread_user.domain_join_admin.user_principal_name
+    user_principal_name = "${local.domain_admin_username}@${var.ad_ds_domain_name}"
     password            = random_password.domain_join_admin.result
   }
   sensitive = true
 }
 
-output "entra_domain_services_domain_name" {
-  description = "Microsoft Entra Domain Servicesのドメイン名（ADFSサーバーのドメイン参加先）"
-  value       = var.entra_domain_services_domain_name
+output "ad_ds_domain_name" {
+  description = "自己管理AD DSフォレストのドメイン名（ADFSサーバーのドメイン参加先）"
+  value       = var.ad_ds_domain_name
+}
+
+output "dc_vm_public_ip" {
+  description = "AD DSフォレストのDC VMへのRDP接続先（トラブルシュート用、docs/adfs-setup-runbook.md参照）"
+  value       = azurerm_public_ip.dc.ip_address
 }
 
 output "insurance_test_user_credentials" {
   description = "Group 2（5グループ）の検証用ユーザーのサインイン情報。TESTING.mdの表に転記して使う"
   value = {
-    for key, user in azuread_user.insurance_test_user : key => {
-      user_principal_name = user.user_principal_name
+    for key in var.insurance_test_groups : key => {
+      user_principal_name = "demo-${key}@${var.ad_ds_domain_name}"
       password            = random_password.insurance_test_user[key].result
     }
   }
