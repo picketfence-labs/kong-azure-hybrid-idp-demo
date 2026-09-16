@@ -1,11 +1,11 @@
 # 自己管理AD DS・ADFSの構築と接続確認
 
-対象は構築担当者。最新[設計](design-brief.md)と[ADR-0001](decisions/0001-adfs-vm-provisioning-automation.md)に従い、基盤/ドメイン参加をTerraform、ADFS設定を手動で行います。2026-09-15にEntra DS前提のSection 1構築・検証を完了しましたが、2026-09-16に[ADR-0005](decisions/0005-adfs-directory-platform.md)でOption A（自己管理AD DSへ切替）が決定し、旧環境は`terraform destroy`済みです。Section 1は本PRで自己管理AD DSフォレスト構築手順へ書き換え済みです（`terraform apply`自体は未実施）。
+対象は構築担当者。最新[設計](design-brief.md)と[ADR-0001](decisions/0001-adfs-vm-provisioning-automation.md)に従い、基盤/ドメイン参加をTerraform、ADFS設定を手動で行います。2026-09-15にEntra DS前提のSection 1構築・検証を完了しましたが、2026-09-16に[ADR-0005](decisions/0005-adfs-directory-platform.md)でOption A（自己管理AD DSへ切替）が決定し、旧環境は`terraform destroy`済みです。Section 1は自己管理AD DSフォレスト構築手順へ書き換え、2026-09-16に`terraform apply`実行・実機確認まで完了済みです（[troubleshooting-log](troubleshooting-log.md)「自己管理AD DSフォレストの`terraform apply`実行」参照）。
 
 ## 0. 再開前のgate
 
 - [x] [ADR-0005](decisions/0005-adfs-directory-platform.md)を決定した → Option A（自己管理AD DS）採択（2026-09-16）。
-- [x] Section 1を自己管理AD DSフォレスト構築手順へ書き換えた（`terraform/adfs_domain_controller.tf`ほか）。
+- [x] Section 1を自己管理AD DSフォレスト構築手順へ書き換え、`terraform apply`・実機確認まで完了した（`terraform/adfs_domain_controller.tf`ほか）。
 - [ ] Azureの対象テナント・subscription、権限、予算、削除担当/期限を確認する。Entra系デモのテナントとADFS同期元を同一と決めつけない。
 - [ ] 以前のapply中断・削除記録を確認し、現在のAzure残存とTerraform stateを照合する。過去の削除記録を現在の実測としない。
 - [ ] Gatewayライセンス、image digest、`kong-ee`参照、必要ツールを用意する。公開履歴に載った資格情報が有効なら管理者に変更を依頼する。
@@ -16,19 +16,20 @@
 Terraform（`terraform/adfs_domain_controller.tf`）が次の順序で自動構築する:
 
 1. DC用VM（`vm-dc-demo`）をネットワーク・NSGとともに作成する。
-2. CustomScriptExtension（`create-ad-ds-forest`）が`AD-Domain-Services`ロール導入→`Install-ADDSForest`によるフォレスト昇格を行う。完了時にVMが自動再起動する（`scripts/adfs/Install-AdDsForest.ps1`、`Win32_ComputerSystem.DomainRole`チェックで再apply時も冪等）。
-3. 再起動・AD DSサービス起動を待つ`time_sleep`（5分）を挟む。
-4. CustomScriptExtension（`create-domain-objects`）がドメイン管理者アカウント（`adfs-domain-admin`、`Domain Admins`へ追加）とGroup 2の5テストユーザー（`department`属性付き）をDC上で直接作成する（`scripts/adfs/New-AdDsDomainObjects.ps1`。Entra ID cloud-onlyアカウント経由のパスワードハッシュ同期待ちは不要）。
+2. CustomScriptExtension（`bootstrap-dc`）が`AD-Domain-Services`ロール導入→`Install-ADDSForest`によるフォレスト昇格を行う。完了時にVMが自動再起動し、起動時スケジュールタスク経由でドメインオブジェクト作成へ続く（`scripts/adfs/Install-AdDsForest.ps1`、`Win32_ComputerSystem.DomainRole`チェックで再apply時も冪等）。AzureのWindows VMはCustomScriptExtensionのhandlerを1台につき1つしか持てないため、フォレスト昇格とドメインオブジェクト作成は1つの拡張機能にまとめてある。スクリプト本体は非公開のBlob Storage（SAS URL）経由でVMへダウンロードされる（`commandToExecute`への直接埋め込みは長さ上限で失敗するため）。
+3. 再起動・AD DSサービス起動・スケジュールタスク実行を待つ`time_sleep`（5分）を挟む。
+4. スケジュールタスク（またはDC作成済みの場合はbootstrap-dc拡張機能が直接）がドメイン管理者アカウント（`adfs-domain-admin`、`Domain Admins`へ追加）とGroup 2の5テストユーザー（`department`属性付き）をDC上で作成する（`scripts/adfs/New-AdDsDomainObjects.ps1`。Entra ID cloud-onlyアカウント経由のパスワードハッシュ同期待ちは不要）。
 5. VNetのDNSをDC VMのプライベートIPへ切り替える。
 6. ADFS VMを、新設AD DSフォレストへドメイン参加させる（`JsonADDomainExtension`、既存の`adfs-domain-admin`アカウントを使用）。
 
-承認を得て`terraform apply -var-file=adfs.tfvars`を実行した後、次を確認する:
+2026-09-16、承認を得て`terraform apply -var-file=adfs.tfvars`を実行し、`az vm run-command invoke`（読み取り専用）で次を実機確認済み:
 
-- DC VMへRDP接続し（`terraform output dc_vm_public_ip`）、`dcdiag`でフォレストの健全性を確認する。伝播待ちや再起動を成功扱いで飛ばさない。
-- `terraform output ad_ds_domain_name`・`terraform output adfs_domain_admin_credentials`・`terraform output insurance_test_user_credentials`で、ドメイン名・管理者・5テストユーザーの資格情報を取得する。資格情報は安全な保管先へ渡し、端末ログやPRへ出力しない。
-- ADFS VMが`PartOfDomain=True`、対象ドメインと一致することを確認する（`Get-CimInstance Win32_ComputerSystem`）。
+- `vm-dc-demo`: `DomainRole=5`（フォレスト昇格済み）、`Domain=adfsdemo.picketfencelabs.local`、`adfs-domain-admin`と5テストユーザー（`demo-it`/`demo-sales`/`demo-new-business`/`demo-policy-admin`/`demo-claim`、いずれも`department`属性設定済み）が存在、`adfs-domain-admin`が`Domain Admins`メンバー。
+- `vm-adfs-demo`: `PartOfDomain=True`、`Domain=adfsdemo.picketfencelabs.local`、FQDN`vm-adfs-demo.adfsdemo.picketfencelabs.local`。
 
-`create-ad-ds-forest`拡張機能は、`Install-ADDSForest`完了時の自動再起動とタイミングが競合する既知のリスクがある（拡張機能自体がタイムアウト・失敗と報告される可能性）。冪等化してあるため、その場合は`terraform apply`を再実行して復旧を試みる。VM作成・ドメイン参加までと、ADFSサービス設定の完了を別に記録する。フォレスト構築時間・継続費用を見込んで作業枠を確保する。
+資格情報は`terraform output ad_ds_domain_name`・`terraform output adfs_domain_admin_credentials`・`terraform output insurance_test_user_credentials`・`terraform output dc_vm_public_ip`で取得できる。安全な保管先へ渡し、端末ログやPRへ出力しない。
+
+実機applyで判明した3件の実装不備（CustomScriptExtensionのhandler制限、`commandToExecute`の長さ上限、SASの`timestamp()`による毎plan差分）と対処は[troubleshooting-log](troubleshooting-log.md)に記録済み。VM作成・ドメイン参加までと、ADFSサービス設定の完了を別に記録する。フォレスト構築時間・継続費用を見込んで作業枠を確保する。
 
 ## 2. ADFSサービス、証明書、名前解決
 

@@ -6,7 +6,10 @@
 > Group 2のディレクトリ基盤はEntra Domain Services→**自己管理AD DS（[ADR-0005](decisions/0005-adfs-directory-platform.md)、Option A決定）**に切り替わりました。旧Azure環境は`terraform destroy`済みで、自己管理AD DS一式は未構築です。実装再開時は本ページの「ADR-0005決定後の基盤方針」節と「自己管理AD DS移行で新たに必要な実装作業」を最初に読んでください。図版（[図版素材](assets/hybrid-idp/README.md)）も改訂4で同じ決定を反映済みです。
 
 > [!info] 2026-09-16追記: 自己管理AD DSフォレストのTerraform実装完了
-> 「自己管理AD DS移行で新たに必要な実装作業」（下記）を`terraform/adfs_domain_controller.tf`（新規）・`terraform/adfs_network.tf`・`terraform/adfs_vm.tf`・`terraform/insurance_users.tf`・`scripts/adfs/Install-AdDsForest.ps1`（新規）・`scripts/adfs/New-AdDsDomainObjects.ps1`（新規）として実装した。`docs/adfs-setup-runbook.md`のSection 1も書き換え済み。`terraform validate`・`terraform plan -var-file=adfs.tfvars`は完了（54 add / 0 change / 0 destroy、既存Group 1リソースへの意図しない差分なし）。**`terraform apply`は未実施**（別途承認が必要）。フォレスト/ドメイン名は既存の`adfsdemo.picketfencelabs.local`を再利用した（ADR-0004のFederation Service名・TLS証明書SANが依存するため）。既知の持ち越しリスクは2点: (1) フォレスト昇格の自動再起動とCustomScriptExtensionの完了報告のタイミング競合（冪等化済みで再applyによる復旧を想定）、(2) DC VM追加後の`Standard_D2als_v7`ファミリのvCPUクォータ（ADFS VMと合計4 vCPU）が東日本で足りるかは`apply`実行まで未確認。
+> 「自己管理AD DS移行で新たに必要な実装作業」（下記）を`terraform/adfs_domain_controller.tf`（新規）・`terraform/adfs_network.tf`・`terraform/adfs_vm.tf`・`terraform/insurance_users.tf`・`scripts/adfs/Install-AdDsForest.ps1`（新規）・`scripts/adfs/New-AdDsDomainObjects.ps1`（新規）として実装した。`docs/adfs-setup-runbook.md`のSection 1も書き換え済み。`terraform validate`・`terraform plan -var-file=adfs.tfvars`は完了（54 add / 0 change / 0 destroy、既存Group 1リソースへの意図しない差分なし）。フォレスト/ドメイン名は既存の`adfsdemo.picketfencelabs.local`を再利用した（ADR-0004のFederation Service名・TLS証明書SANが依存するため）。
+
+> [!info] 2026-09-16追記: `terraform apply`実行・実機確認完了
+> 承認を得て`terraform apply -var-file=adfs.tfvars`を実行した。実機で3件の実装不備（CustomScriptExtensionはWindows VM1台につきhandler1つまで、`commandToExecute`の長さ上限、SASの`timestamp()`使用による毎plan差分）が判明し、いずれもコード修正→再applyで解決した（詳細: [troubleshooting-log](troubleshooting-log.md)）。最終的に`terraform plan`は`No changes`で収束し、`az vm run-command invoke`（読み取り専用）で`vm-dc-demo`のフォレスト昇格（`DomainRole=5`）・ドメイン管理者・5テストユーザーの存在、`vm-adfs-demo`のドメイン参加（`PartOfDomain=True`）を実機確認した。東日本の`Standard_D2als_v7`ファミリvCPUクォータ（ADFS VM+DC VMで合計4 vCPU）は問題にならなかった。次はADFSロール・ファーム構築（[adfs-setup-runbook.md](adfs-setup-runbook.md) Section 2以降）が未着手。
 
 ## 正本と依存PR
 
@@ -16,7 +19,7 @@
 4. [ADR-0005](decisions/0005-adfs-directory-platform.md): AD FSのディレクトリ基盤（自己管理AD DS、Option A決定）。
 5. [TESTING](../TESTING.md)、[ADFS runbook](adfs-setup-runbook.md)、[図版素材](assets/hybrid-idp/README.md)。
 
-中断ログPR #8、図版PR #9、設計PR #10、事前監査PR #11、P0選定PR #12はmainへmerge済みです。P1はPR #12の選定結果を土台にしています。ディレクトリ基盤の実機記録PR #21、ADR-0005決定PR #22、図版改訂4 PR #23もmainへmerge済みです。次の開発担当はこれらを前提に、自己管理AD DSフォレストの実装から再開してください。
+中断ログPR #8、図版PR #9、設計PR #10、事前監査PR #11、P0選定PR #12はmainへmerge済みです。P1はPR #12の選定結果を土台にしています。ディレクトリ基盤の実機記録PR #21、ADR-0005決定PR #22、図版改訂4 PR #23、ハンドオフ要約PR #24、自己管理AD DSフォレストのTerraform実装PR #25もmainへmerge済みです。PR #25マージ後、`terraform apply`実行時に判明したCustomScriptExtension関連の実装不備3件を修正するフォローアップPRを別途作成しています（詳細は[troubleshooting-log](troubleshooting-log.md)）。次の開発担当はこれらを前提に、AD FSロール・ファーム構築（docs/adfs-setup-runbook.md Section 2以降）から再開してください。
 
 ## ADR-0005決定後の基盤方針（2026-09-16更新）
 
@@ -40,7 +43,7 @@
 | `handler.lua` / `authz.lua` | Header＋known_groups/allowed_groups。DBなし | 検証済み属性の安全な入力を証明してからDB化 |
 | `insurance-ui` | 公開shell、別画面ログイン、経路別status/logout。旧token relayは削除 | 実GatewayでCookie分離、両IdP同時利用、logout分離を確認 |
 | 図 | 改訂3、quality 9/9、ブラウザ検証済み | 実イベントadapterは未実装 |
-| 基盤 | 自己管理AD DSフォレスト用Terraform・スクリプトを実装済み（`terraform/adfs_domain_controller.tf`ほか）。`terraform validate`/`plan`確認済み、`apply`は未実施 | 承認を得て`terraform apply -var-file=adfs.tfvars`を実行し、フォレスト昇格・ドメイン参加・テストユーザー作成が実機で成功することを確認する（docs/adfs-setup-runbook.md Section 1） |
+| 基盤 | 2026-09-16、自己管理AD DSフォレスト・ADFS VMの`terraform apply`・実機確認完了（`DomainRole=5`、ドメイン参加`PartOfDomain=True`を`az vm run-command`で確認、[troubleshooting-log](troubleshooting-log.md)参照） | AD FSロール・ファーム構築（docs/adfs-setup-runbook.md Section 2以降）が未着手 |
 
 - [ ] デモ資格情報を確認。公開履歴に記載された有効パスワードは管理者が変更する。このPRは本文をプレースホルダー化するだけで、履歴削除/失効はしない。
 - [ ] Gatewayを起動する直前に、ライセンスを確認する。対象image source revisionは`7d95f6d021d05405e4c47244049ad21d64619201`と確認済み。
