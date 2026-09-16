@@ -5,7 +5,7 @@
   "diagram_sha256": "317312865327da93c9cc74747b800725c7bd8ff4d1f02ecadc13e12c938e55f6",
   "nodes": {
     "entra-id": "Microsoft Entra ID",
-    "entra-ds": "Entra Domain Services",
+    "entra-ds": "自己管理AD DS",
     "adfs": "ADFS",
     "entra-oidc": "Entra系 Route",
     "legacy-authz": "ADFS系 Route",
@@ -103,12 +103,13 @@
     "These are authored IDs, not a supported Archify event API.",
     "The two Kong nodes combine authentication and authorization in ONE DP; correlate their runtime phases separately.",
     "Customer ingress paths are illustrative proposals, not deployed configuration. Both target one backend.",
-    "Entra DS synchronization is setup-time context, not an API request event; tenant identity is not implied.",
+    "Group 2's directory is a self-managed AD DS forest on an Azure VM (ADR-0005 Option A), not Microsoft Entra Domain Services; domain authentication here is setup-time context, not an API request event.",
     "Do not infer IdP failure or backend non-arrival from a browser timeout.",
     "Revision 3 restores one shared test-ui node, g1-entry/g2-entry and adds g1-callback/g2-callback.",
     "g1-login/g2-login and callbacks represent front-channel redirects THROUGH THE SEPARATE BROWSER WINDOW, not direct IdP-to-Kong server callbacks.",
     "Authorization code return precedes server-side token exchange/validation and authorization; these runtime stages must be observed separately.",
-    "OBO/MCP/LLM details remain omitted from the overview, not removed from project scope."
+    "OBO/MCP/LLM details remain omitted from the overview, not removed from project scope.",
+    "Revision 4 relabels entra-ds from Microsoft Entra Domain Services to a self-managed AD DS forest (ADR-0005 Option A, 2026-09-16); node ID and edges are unchanged."
   ],
-  "diagram_revision": 3
+  "diagram_revision": 4
 }

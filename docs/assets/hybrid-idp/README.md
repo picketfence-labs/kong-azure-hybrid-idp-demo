@@ -13,7 +13,7 @@
 - IdPログインは別画面で開き、図を表示した画面を維持する。Group 1はEntra ID、Group 2はADFSの標準画面。
 - UIは判定入力・条件・結果、実行経路と停止地点を表示する。
 - カスタム認可は短い判定処理に保ち、UI/図の制御を入れない。
-- この図はEntra DS＋ADFSを維持する設計時点の成果物。実機で権限モデルが成立しないと判明したため、[ADR-0005](../../decisions/0005-adfs-directory-platform.md)の決定後にIdP部分を更新する。既存OBO/Tool ACLは維持する（本図では詳細を省略）。
+- [ADR-0005](../../decisions/0005-adfs-directory-platform.md)でOption A（自己管理AD DSへ切替）が決定済み（2026-09-16）。**改訂4**でEntra Domain ServicesのノードをAzure VM上の自己管理AD DSへ関連付け直した（label/sublabelのみ更新、ID・ジオメトリ・エッジは維持）。既存OBO/Tool ACLは維持する（本図では詳細を省略）。
 - **改訂2**: product/simulation/applicationはEntra、policy/claimはADFS、customerは別Pathで双方から同じAPIへ。全6 APIをAzure外・Kong外の共通ホスティングに配置する。
 - Kongの2処理系を**1つのData Plane**で扱う。従来の「Group 2で全6 API」前提と5グループ×6APIテスト表は設計更新で再編する。
 
@@ -47,7 +47,7 @@ customerの `/entra/customer/*` と `/adfs/customer/*` はP0で採用した公�
 
 凍結済みの改訂3 HTMLと再生成用JSONには、P0前の「説明用のPath案」という注記が残っています。図本体を手編集せず、実装では[Design Brief](../../design-brief.md)と[認可fixture](../../design-fixtures/insurance-permissions.json)を正本にします。図内注記の更新は、Archifyで図を再生成してreceiptを更新する別PRで行います。
 
-①はUIから対象Pathへの要求、②は未認証時にKongが返すリダイレクトにブラウザが従ってIdPへ進む処理、③はIdP認証後に別画面ブラウザが認可コード付きでKong callbackへ戻る処理です。②③の線はブラウザ経由の論理経路であり、サーバー同士のリダイレクトやIdPからKongへの直接通知ではありません。callback後のcode→token交換・token検証はKongが行い、認可後にAPIへ転送します。有効なセッションの再利用時は②③を省略します。**改訂3では共通のTest UIノードを復元**し、Entra系とADFS系Routeへ明示接続。図の画面を維持し、IdPログインだけ別画面で行います。OBO/MCP/LLMの詳細は本図では省略し、既存機能を削除する意図はありません。Entra DSへの同期はこの図を作成した時点の前提であり、ADR-0005の決定後に更新します。図のEntra IDとEntra DSの元テナントが同一であるとは断定しません。
+①はUIから対象Pathへの要求、②は未認証時にKongが返すリダイレクトにブラウザが従ってIdPへ進む処理、③はIdP認証後に別画面ブラウザが認可コード付きでKong callbackへ戻る処理です。②③の線はブラウザ経由の論理経路であり、サーバー同士のリダイレクトやIdPからKongへの直接通知ではありません。callback後のcode→token交換・token検証はKongが行い、認可後にAPIへ転送します。有効なセッションの再利用時は②③を省略します。**改訂3では共通のTest UIノードを復元**し、Entra系とADFS系Routeへ明示接続。図の画面を維持し、IdPログインだけ別画面で行います。OBO/MCP/LLMの詳細は本図では省略し、既存機能を削除する意図はありません。この段落が言う「Entra DSへの同期」は改訂3（作図時点）の前提であり、ADR-0005決定（Option A）を反映した改訂4では自己管理AD DSに置き換わっています。図のEntra IDと自己管理AD DSの元テナント・ドメインが同一であるとは断定しません。
 
 章選択、focus、path、theme、exportは構成説明のViewer操作です。自動実トレースではありません。固定Viewer UIとHTML langはArchifyの英語fallback、図の本文は日本語です。
 
@@ -67,3 +67,5 @@ customerの `/entra/customer/*` と `/adfs/customer/*` はP0で採用した公�
 Archify showcase validate/deliver: 9/9、0 errors、0 warnings。Chrome visual-check: 4画面サイズでcontainment合格、1440×900/2048×1320のlight/darkをcapture。PNGの目視でも重なり・切れ・大きな余白の問題なし。
 
 改訂3ではredirect/callbackラベルのノード重なりを修正し、目視で重なって見えた往路/復路を別ルートに分離（修正2回）。再生成はArchify 2.17の`validate architecture`、`deliver architecture`、`visual-check`を使用し、同じ品質ゲートを通すこと。
+
+**改訂4**（2026-09-16、ADR-0005 Option A反映）: `entra-ds`のlabel/sublabelのみ更新するテキストのみの改訂。ジオメトリ・ID・エッジは既存改訂3から流用。showcase validate/deliver: 9/9、0 errors、0 warnings（修正往復0）。visual-check: 1440×900・1600×1000・1920×1080・2048×1320でcontainment合格、1440×900と2048×1320のlight/darkを目視確認（重なり・切れ・overflowなし）。specification_sha256: `3dbad2a5e6af318253ffae02f9f4edb54be657a6379ee0272bf5c14b985d4725`（10826 bytes）、artifact_sha256: `f4f4baa2cd2ec8453bfa174728a9bd8fd3ff924ce4d2cd6dc04287efb4def94a`（820029 bytes）。

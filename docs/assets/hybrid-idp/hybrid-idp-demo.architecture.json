@@ -87,8 +87,8 @@
     {
       "id": "entra-ds",
       "type": "cloud",
-      "label": "Entra Domain Services",
-      "sublabel": "ADFSが参照するマネージドAD",
+      "label": "自己管理AD DS",
+      "sublabel": "ADFSが参照するAzure VM上の自己構築AD",
       "pos": [
         50,
         410

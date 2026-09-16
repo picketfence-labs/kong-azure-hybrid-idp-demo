@@ -1,12 +1,12 @@
 {
   "diagram_type": "architecture",
   "specification": {
-    "sha256": "317312865327da93c9cc74747b800725c7bd8ff4d1f02ecadc13e12c938e55f6",
-    "bytes": 10819
+    "sha256": "3dbad2a5e6af318253ffae02f9f4edb54be657a6379ee0272bf5c14b985d4725",
+    "bytes": 10826
   },
   "artifact": {
-    "sha256": "b9c90cd97a81fd7999a8a47005f7b1b5f810630bb0facfa487064f05320f52a3",
-    "bytes": 820001
+    "sha256": "f4f4baa2cd2ec8453bfa174728a9bd8fd3ff924ce4d2cd6dc04287efb4def94a",
+    "bytes": 820029
   },
   "validation": {
     "checksPassed": 9,
@@ -28,8 +28,9 @@
     "dark"
   ],
   "visual_review": "passed",
-  "correction_rounds": 2,
+  "correction_rounds": 0,
+  "revision_note": "改訂4: entra-dsノードのlabel/sublabelをMicrosoft Entra Domain Servicesから自己管理AD DSへ変更（ADR-0005 Option A、2026-09-16）。ジオメトリ・ID・他ノード/エッジは変更なし。テキストのみの改訂のため初回validateから0エラー・0警告、修正往復なし。",
   "runtime_integration": "not_implemented",
   "pages_url": "https://picketfence-labs.github.io/diagrams/5ecfdbb4c0e9/",
-  "diagram_revision": 3
+  "diagram_revision": 4
 }
