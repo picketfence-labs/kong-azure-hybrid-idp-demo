@@ -283,3 +283,10 @@
 - **実際どうだったか**: Azureの両リソースグループ、Entra Domain Services、VM、Azure OpenAI、および大半のEntraオブジェクトは削除されたが、`azuread_application_identifier_uri.downstream_api`の削除でMicrosoft Graphが`Request_ResourceNotFound`を返し、初回destroyは終了コード1になった。Terraform stateにはdownstream APIのapplicationとidentifier URIの2件が残った。
 - **調査結果**: 直後のMicrosoft Graph照合では、stateと同じobject IDのdownstream API applicationとidentifier URIが実在していた。他の対象EntraオブジェクトとAzureリソースグループは残っていなかった。このため、実リソース消失ではなく、並行削除中のMicrosoft GraphまたはAzureAD providerから見た一時的な整合性のずれと判断した。
 - **対処・解決確認**: 残存2件を確認してから同じdestroyを再実行した。identifier URIとapplicationは順に削除され、`Destroy complete! Resources: 2 destroyed.`で正常終了した。手動削除や`terraform state rm`は行っていない。
+
+## 2026-09-16 `gh pr create`がfork元（upstream）のkong-azure-obo-demoへPRを作ろうとして失敗した
+
+- **何を期待していたか**: `git push`後、`gh pr create`が`origin`（`picketfence-labs/kong-azure-hybrid-idp-demo`）に対してPRを作成すること。
+- **実際どうだったか**: `git push -u origin <branch>`は成功し、`git log origin/main..HEAD`でも新規commitがリモート追跡ブランチ上に存在することを確認できたにもかかわらず、`gh pr create`は`Head sha can't be blank, ... No commits between main and <branch>`で失敗した。`gh repo view --json nameWithOwner`で確認すると、gh CLIが解決していたリポジトリは`picketfence-labs/kong-azure-obo-demo`（本リポジトリのfork元、`git remote`の`upstream`）で、`origin`ではなかった。
+- **原因**: このリポジトリは`kong-azure-obo-demo`のフォークで、`upstream`remoteが設定されている。`gh`はデフォルトのリポジトリ解決で、フォーク元（upstream）を優先することがある。
+- **対処・解決確認**: `gh pr create`に`--repo picketfence-labs/kong-azure-hybrid-idp-demo --head <branch> --base main`を明示指定したところ成功した（PR #25）。フォーク関係のあるリポジトリで`gh`コマンドを使う際は、対象リポジトリを毎回明示指定するか、事前に`gh repo view`でgh CLIの解決先を確認する。
