@@ -38,6 +38,7 @@
 - 旧「全6 APIをGroup 2で処理」「属性値＝グループID」「UI自体がADFSログインへ遷移」は変更対象。
 - 主要旧実装はmerge済みだが、ADFS実基盤と両経路のE2Eは未検証。図の品質検証は認証・認可E2Eの証拠ではない。
 - 2026-09-16の実機確認で、Entra Domain Servicesの`AAD DC Administrators`はAD FSファーム作成に必要なDomain Admin権限を持たないと判明した。Entra DS＋ADFS維持と自己管理AD DS不採用を同時に満たす公式構成を確認できないため、この要件だけを[ADR-0005](0005-adfs-directory-platform.md)で再判断する。他のAPI分担、認可マスタ、UI、観測要件は変更しない。
+- 2026-09-16、[ADR-0005](0005-adfs-directory-platform.md)でOption A（自己管理AD DSへ切替）を採択。上記「AD基盤」の選択（自己構築の手間を理由に不採用）を更新し、以後は**自己管理AD DS＋ADFS**を基盤とする。デモがAzure前提の環境で実施する必要があるという要件を優先した。
 
 ## 影響・トレードオフ
 

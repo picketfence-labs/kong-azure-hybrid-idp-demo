@@ -45,7 +45,9 @@ TerraformによるEntra Domain Services、VM、ドメイン参加と、RDPによ
 
 ## 影響・トレードオフ
 
-ハイブリッド方式は各段階の出力を確認できたため、ファーム作成前に権限不足を検出し、`OverwriteConfiguration`やサービス削除を行わず停止できた。ただし、対話実行だけではDomain Admin要件を回避できない。ADR-0005の決定までrunbookの`-Apply`を再実行しない。
+ハイブリッド方式は各段階の出力を確認できたため、ファーム作成前に権限不足を検出し、`OverwriteConfiguration`やサービス削除を行わず停止できた。ただし、対話実行だけではDomain Admin要件を回避できない。
+
+2026-09-16、[ADR-0005](0005-adfs-directory-platform.md)でOption A（自己管理AD DS）採択。自己管理AD DSでは、フォレスト作成者自身がDomain Adminになるため、本ADRが対象とした「AD FSファーム構築・OAuth設定を対話手順にする」という決定自体はそのまま維持できる。ただし対象範囲が広がり、Terraform管理対象にAD DSフォレスト用VMのプロビジョニング・フォレスト昇格処理（`Install-ADDSForest`相当）が新たに加わる。この新規範囲の自動化度合いは、既存のOption B方針（インフラ・ドメイン参加関連はTerraform、ADFS固有設定は対話的runbook）を踏襲する前提とし、別途ADR化はしない。
 
 ## 関連する決定
 - [ADR-0005](0005-adfs-directory-platform.md): AD FSを構成できるディレクトリ基盤を再判断する。

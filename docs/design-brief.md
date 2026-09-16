@@ -5,15 +5,15 @@
 > [!warning] 開発停止からの設計更新。新要件は未実装
 > 旧実装PR #3〜#7はmerge済みですが、保険APIは全6本がADFS向け、カスタム認可はDB未参照、UIは旧方式です。ADFS実基盤の中断・削除は過去記録であり、現在liveや新E2Eを確認したものではありません。図版PR #9は利用者レビュー後、2026-09-15にmerge済みです。本書を含むPR #10は設計ベースラインをmainへ取り込むもので、実装案の採否はADR-0003のG1〜G4 PoCで確定します。
 
-> [!warning] Entra Domain ServicesとAD FSの組合せを再検討中
-> 2026-09-16の実機構築で、Microsoft Entra Domain Servicesの`AAD DC Administrators`はAD FSファーム作成に必要なDomain Admin権限を持たず、公式の非Domain Admin手順に必要なDKM事前準備もできないと確認しました。AD FSファームは未構成です。[ADR-0005](decisions/0005-adfs-directory-platform.md)でディレクトリ基盤を再判断するまで、Group 2の基盤構築と実装を進めません。
+> [!warning] AD FSのディレクトリ基盤をEntra DSから自己管理AD DSへ変更（未実装）
+> 2026-09-16の実機構築で、Microsoft Entra Domain Servicesの`AAD DC Administrators`はAD FSファーム作成に必要なDomain Admin権限を持たず、公式の非Domain Admin手順に必要なDKM事前準備もできないと確認しました（Microsoft公式ドキュメントでも「テナント利用者へDomain Admin/Enterprise Admin権限を提供しない」と明記）。利用者は[ADR-0005](decisions/0005-adfs-directory-platform.md)で**自己管理AD DSへの切替（Option A）**を採択しました。Entra Domain Services関連のTerraform・runbookはこれから書き換えが必要で、まだ実装されていません。旧Entra DS環境は`terraform destroy`済みです。
 
 [![共通UI・Azure・1 DP・6 API](assets/hybrid-idp/hybrid-idp-demo.png)](https://picketfence-labs.github.io/diagrams/5ecfdbb4c0e9/)
 
 ## 1. ゴールと変更しない範囲
 
 - 共通Kong Gateway **1 data plane**でEntra IDとADFSのOIDC認証を扱い、経路ごとの認可を説明・検証する。
-- Entra DS＋ADFSの維持は承認済み要件だったが、実機で権限モデルが成立しないと確認した。[ADR-0005](decisions/0005-adfs-directory-platform.md)の決定後に、この要件と自己管理AD DSの不採用を更新する。
+- **自己管理AD DS（Windows Server、Azure VM上に新規構築）＋ADFS**を維持する。Entra DS＋ADFSは実機で権限モデルが成立しないと判明したため、[ADR-0005](decisions/0005-adfs-directory-platform.md)で自己管理AD DSへ切替済み（2026-09-16決定）。Group 1（Entra ID直結・OIDC OBO）はこの変更の影響を受けない。
 - 保険6 APIはEntra対象3、ADFS対象2、customer共有1へ分担する。APIは全てKong外・Azure外の同じホスティング領域。
 - Group 2のカスタム認可は簡潔なまま、PostgreSQLで属性対応とAPI許可条件を照会する。
 - 共通Test UIの図を維持し、IdPは別画面。判定に用いた属性・ルール・結果・停止地点を証拠付きで表示する。
@@ -119,7 +119,7 @@ LLMアクセスは`ai-proxy-advanced`プラグイン必須。実LLMはAzure Open
 [ADR-0002](decisions/0002-hybrid-idp-requirements.md)が確定要件、[ADR-0003](decisions/0003-ui-session-master-observation.md)が実装案を管理する。2026-09-15のP0確認で、7つの公開Pathと[認可fixture](design-fixtures/insurance-permissions.json)を初期実装契約として採用した。DB schema、UI/session、観測、状態コードはPoCで採否を決める案であり、現行YAMLや配備済みAPIの説明ではない。
 
 - 共通Kong Gateway 1 data planeで両経路を扱う。Kong設定用PostgreSQLと認可業務マスタは分離する。
-- 現在のAzure実環境にはEntra ID、Entra DS、ADFS VMがある。ただし、このIdP構成はADR-0005の判断対象であり、目標構成として確定しない。全保険APIはKong外・Azure外の共通ホスティング領域に置き、既存ローカルCompose構成を基本にする。
+- 目標のAzure構成はEntra ID（Group 1）、自己管理AD DS＋ADFS VM（Group 2、[ADR-0005](decisions/0005-adfs-directory-platform.md)でOption A採択）。Entra Domain Servicesは使わない（旧環境は`terraform destroy`済み、未再構築）。全保険APIはKong外・Azure外の共通ホスティング領域に置き、既存ローカルCompose構成を基本にする。
 - カスタム認可はADFS系に限定する。Entra系はSecurity Groupに応じたKong標準機能の条件、既存MCPはTool ACLを維持する。
 - Test UIは既存Chat UIを置換しない。保険6 APIの7つの入口（customerは2経路）を対象にする。
 - Group 2は引き続きOIDC。初期SAML案は公式`saml` Pluginで必要属性を取り出せなかったため取り下げた。SAMLへ戻さない。
@@ -185,7 +185,7 @@ IdP内のエラーは各IdP標準画面で確認する。callbackにエラーが
 
 #### ADFS系の業務マスタ
 
-ADFSは入力属性を発行し、PluginがDBで業務グループへ変換する。`department`は既存候補を維持するが、ディレクトリからADFSへの属性供給、ADFS発行、token種別の確認はG2の前提とする。具体的なディレクトリ基盤はADR-0005で決め、token上のclaim名は実機結果で固定する。
+ADFSは入力属性を発行し、PluginがDBで業務グループへ変換する。`department`は既存候補を維持するが、ディレクトリ（自己管理AD DS、[ADR-0005](decisions/0005-adfs-directory-platform.md)）からADFSへの属性供給、ADFS発行、token種別の確認はG2の前提とする。token上のclaim名は実機結果で固定する。
 
 | 架空の属性値 | 業務グループ | customer | policy | claim |
 |---|---|---|---|---|

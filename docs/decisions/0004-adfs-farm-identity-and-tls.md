@@ -58,6 +58,8 @@ Federation Service名に既存のVM FQDNを使う。Windows Server上でServer A
 
 Option Bの適用では、専用DNS Aレコード、gMSA、TLS証明書の作成まで成功した。AD FSファームの前提条件検査はDomain Admin権限不足で停止した。名前、TLS、サービスIDの決定とは別に、Entra Domain ServicesがAD FSのDKM準備に必要な権限を提供しない問題が判明したため、[ADR-0005](0005-adfs-directory-platform.md)の決定までこのADRの残りを適用しない。
 
+2026-09-16、ADR-0005でOption A（自己管理AD DS）採択。Federation Service名・TLS証明書・gMSA方式の決定はディレクトリ基盤に依存しないため、自己管理AD DSへそのまま適用する想定。ただしフォレスト/ドメイン名を`adfsdemo.picketfencelabs.local`のまま再利用するか新規名にするかは実装時に確定する（[development-handoff.md](development-handoff.md)参照）。
+
 ## 影響・トレードオフ
 
 Option Bを採用すると、managed domain DNSにデモ専用Aレコードが残る。デモ終了時にこのレコードを削除する。自己署名証明書はこのデモだけで信頼し、検証終了時にブラウザ端末とKongのtrust storeから削除する必要がある。

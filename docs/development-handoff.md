@@ -11,9 +11,19 @@
 
 中断ログPR #8、図版PR #9、設計PR #10、事前監査PR #11、P0選定PR #12はmainへmerge済みです。P1はPR #12の選定結果を土台にしています。
 
-## ADR-0005の決定後も維持する要件
+## ADR-0005決定後の基盤方針（2026-09-16更新）
 
-Entra DS＋ADFSの組合せだけは[ADR-0005](decisions/0005-adfs-directory-platform.md)で再判断する。共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend/別Path、別画面IdP、M2のDBマスタ、簡潔なカスタム認可、既存Chat/OBO/Tool ACL/LLMの機能は維持する。図からUIを省略しない。IdP内部状態やAPI到達を推測で成功扱いしない。
+[ADR-0005](decisions/0005-adfs-directory-platform.md)でOption A（自己管理AD DSへ切替、AD FSを維持する）が決定した。Entra Domain Servicesは`AAD DC Administrators`にDomain Admin/Enterprise Admin権限を提供せず、AD FSファーム作成の標準・delegated administrationいずれの公式パスも実行できないとMicrosoft公式ドキュメントと実機の両方で確認済みのため。**次の実装は自己管理AD DS（Windows Server、Azure VM上に新規フォレスト構築）を前提に進める。Entra DS関連のTerraformリソースは新規のAD DSフォレスト用リソースへ置き換える。** 共通Kong 1 DP、6 APIのIdP分担、customerの同一Backend/別Path、別画面IdP、M2のDBマスタ、簡潔なカスタム認可、既存Chat/OBO/Tool ACL/LLMの機能は維持する。図からUIを省略しない。IdP内部状態やAPI到達を推測で成功扱いしない。
+
+### 自己管理AD DS移行で新たに必要な実装作業
+
+- `terraform/adfs_domain_services.tf`（Entra Domain Services一式）を撤去し、AD DSフォレスト用のVM・Terraformコードを新規作成する（VM作成→`Install-ADDSForest`相当の初期構築→再起動待ち、の順）。公開Terraformモジュール（[kumarvna/terraform-azurerm-active-directory-forest](https://github.com/kumarvna/terraform-azurerm-active-directory-forest)等）がdev/test/demo向けの参考実装として存在する。
+- VNetのDNS設定をEntra DSのDC IPから新設AD DS VMのプライベートIPへ変更する。
+- `terraform/insurance_users.tf`のテストユーザー作成を、Entra ID cloud-only account経由のパスワードハッシュ同期待ち方式から、AD DS上での直接作成（`New-ADUser -AccountPassword`等、作成時点で即利用可能）へ作り替える。`time_sleep.domain_services_identity_sync`相当の15分待機は不要になる見込み。
+- ADFS VMのドメイン参加先を新設AD DSへ変更する（`terraform/adfs_vm.tf`）。
+- `docs/adfs-setup-runbook.md`のSection 1（現在はEntra DS前提）を、自己管理AD DSフォレスト構築手順へ書き換える。Section 2以降（ADFSロール・証明書・gMSA・ファーム作成）はディレクトリ基盤に依存しない部分が大半のため、DKM事前準備の回避策を削り、通常の`Install-AdfsFarm`（Domain Admin権限で直接実行）へ更新の上、概ね再利用できる見込み。
+- フォレスト/ドメイン名は既存の`adfsdemo.picketfencelabs.local`を再利用するか新規名にするか実装時に決める。
+- `japaneast`のStandard DSv2/DSv3/DSv4/DSv5ファミリはvCPU上限4（2026-09-16実機確認）。AD DS VM追加で不足する場合は早めにquota引き上げを申請する。
 
 ## 現状と最初のgate
 
@@ -23,7 +33,7 @@ Entra DS＋ADFSの組合せだけは[ADR-0005](decisions/0005-adfs-directory-pla
 | `handler.lua` / `authz.lua` | Header＋known_groups/allowed_groups。DBなし | 検証済み属性の安全な入力を証明してからDB化 |
 | `insurance-ui` | 公開shell、別画面ログイン、経路別status/logout。旧token relayは削除 | 実GatewayでCookie分離、両IdP同時利用、logout分離を確認 |
 | 図 | 改訂3、quality 9/9、ブラウザ検証済み | 実イベントadapterは未実装 |
-| 基盤 | 2026-09-15にAzure基盤を全体再構築。Entra DS稼働、ADFS VMドメイン参加、最終plan no-op。2026-09-16にAD FSロール、DNS、OU、gMSA、TLS証明書まで作成。ファームは未構成 | Entra DSがDomain Admin権限を提供しないため、[ADR-0005](decisions/0005-adfs-directory-platform.md)でディレクトリ基盤を再判断。決定まで`-Apply`を再実行しない |
+| 基盤 | 2026-09-16、Entra DS＋ADFS一式を`terraform destroy`済み（正常終了）。[ADR-0005](decisions/0005-adfs-directory-platform.md)でOption A（自己管理AD DS）採択済み | 自己管理AD DSフォレスト用Terraformを新規作成し、ADFS VMのドメイン参加先を変更してから再構築する（上記「自己管理AD DS移行で新たに必要な実装作業」参照） |
 
 - [ ] デモ資格情報を確認。公開履歴に記載された有効パスワードは管理者が変更する。このPRは本文をプレースホルダー化するだけで、履歴削除/失効はしない。
 - [ ] Gatewayを起動する直前に、ライセンスを確認する。対象image source revisionは`7d95f6d021d05405e4c47244049ad21d64619201`と確認済み。
@@ -69,7 +79,7 @@ Terraform再構築は、差分レビューと利用者の明示承認後に実�
 | `known_groups`と`allowed_groups` | decKとPlugin設定が認可の正本 | PostgreSQLをADFS認可の唯一の正本にする | **廃止対象**。移行後は並行保持しない |
 | `insurance-ui`のNext.js基盤 | ADFS専用画面、6ボタン、Bearer token relay、`response.ok`判定 | 共通図、IdP別操作、保護された履歴、認証・認可・到達の分離表示 | **ビルド基盤を再利用、画面とサーバー処理を作り替え** |
 | Archify素材 | 目標図、安定ID、イベント対応案を作成済み | 実イベントを原本とは別のadapterで表示 | **素材を再利用、adapterを追加** |
-| `terraform/adfs_*.tf` | Entra DS、ADFS VM、network、domain join | Entra DSとADFS維持は権限モデル不成立 | **設計へ戻す**。[ADR-0005](decisions/0005-adfs-directory-platform.md)の決定後に再利用、変更、撤去を判断 |
+| `terraform/adfs_*.tf` | Entra DS、ADFS VM、network、domain join | 自己管理AD DSフォレスト＋ADFS維持（[ADR-0005](decisions/0005-adfs-directory-platform.md)Option A） | **Entra DS部分（`adfs_domain_services.tf`）を撤去し新規AD DSフォレストリソースへ置換**。VM/network/NSG部分は概ね再利用、domain joinの接続先を変更 |
 | `terraform/insurance_users.tf` | `department`に業務グループIDを直接設定 | ADFS属性からDBの業務グループへ変換。Entra側Security Group条件も追加 | **ユーザー作成骨格を再利用**。属性値の変更とGroup割当用リソースの追加が必要 |
 | Group 1のChat/OBO/MCP/LLM | 実装済み | 機能を維持 | **変更対象外**。統合時に回帰試験だけ行う |
 
@@ -77,7 +87,7 @@ Terraform再構築は、差分レビューと利用者の明示承認後に実�
 
 - `services/chat-ui`、`kong/login-route.yaml`、`kong/mcp-route.yaml`、`kong/llm-route.yaml`
 - 保険APIのコンテナイメージとアプリケーション実装
-- Entra DSまたはADFSを置き換える実装。設計比較はADR-0005で行う
+- AD FS自体を別IdPへ置き換える実装（ADR-0005でOption Aに決定済み、これ以上の設計比較は不要）
 - ADFSへのOBO追加
 - 複数グループ、deny優先、cache、再試行、汎用ルールエンジン、認可マスタ管理UI
 - Azure資源の作成、削除、ADFS設定、decK sync。各操作は実行前に別途承認を得る

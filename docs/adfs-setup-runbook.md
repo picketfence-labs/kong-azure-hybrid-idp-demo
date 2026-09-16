@@ -1,19 +1,23 @@
-# Entra DS・ADFSの再構築と接続確認
+# 自己管理AD DS・ADFSの構築と接続確認
 
-対象は構築担当者。最新[設計](design-brief.md)と[ADR-0001](decisions/0001-adfs-vm-provisioning-automation.md)に従い、基盤/ドメイン参加をTerraform、ADFS設定を手動で行います。2026-09-15にSection 1のTerraform構築と検証を完了しました。Section 2以降は未実施です。
+対象は構築担当者。最新[設計](design-brief.md)と[ADR-0001](decisions/0001-adfs-vm-provisioning-automation.md)に従い、基盤/ドメイン参加をTerraform、ADFS設定を手動で行います。2026-09-15にEntra DS前提のSection 1構築・検証を完了しましたが、2026-09-16に[ADR-0005](decisions/0005-adfs-directory-platform.md)でOption A（自己管理AD DSへ切替）が決定し、旧環境は`terraform destroy`済みです。
 
 > [!WARNING]
-> 2026-09-16現在、AD FSファーム作成は[ADR-0005](decisions/0005-adfs-directory-platform.md)の判断待ちです。Microsoft Entra Domain ServicesはDomain Admin権限を提供せず、現在の`AAD DC Administrators`アカウントでは公式のAD FS事前条件を満たせません。判断が終わるまで`Configure-AdfsDemoFarm.ps1 -Apply`を再実行しないでください。
+> Section 1は現在Entra DS前提の手順のままで、自己管理AD DSフォレスト構築手順への書き換えが未実施です（[development-handoff.md](development-handoff.md)「自己管理AD DS移行で新たに必要な実装作業」参照）。Section 1を書き換えるまで、本runbookの手順をそのまま実行しないでください。Section 2以降（ADFSロール・証明書・gMSA・ファーム作成）は、DKM事前準備の回避策を削り通常の`Install-AdfsFarm`（Domain Admin権限で直接実行）へ更新すれば、ディレクトリ基盤に依存しない部分が大半のため概ね再利用できる見込みです。
 
 ## 0. 再開前のgate
 
-- [ ] [ADR-0005](decisions/0005-adfs-directory-platform.md)を決定し、採択したディレクトリ基盤を反映した設計PRをレビューする。決定前に自己管理AD DSへの変更やAD FSファーム作成を行わない。
+- [x] [ADR-0005](decisions/0005-adfs-directory-platform.md)を決定した → Option A（自己管理AD DS）採択（2026-09-16）。
+- [ ] Section 1を自己管理AD DSフォレスト構築手順へ書き換え、レビューを受ける。書き換え前に自己管理AD DSへの変更やAD FSファーム作成を行わない。
 - [ ] Azureの対象テナント・subscription、権限、予算、削除担当/期限を確認する。Entra系デモのテナントとADFS同期元を同一と決めつけない。
 - [ ] 以前のapply中断・削除記録を確認し、現在のAzure残存とTerraform stateを照合する。過去の削除記録を現在の実測としない。
 - [ ] Gatewayライセンス、image digest、`kong-ee`参照、必要ツールを用意する。公開履歴に載った資格情報が有効なら管理者に変更を依頼する。
 - [ ] terraform validate/planを確認し、**applyは別途承認を得て**実施する。provider登録やIdP設定変更も読取り作業ではない。
 
-## 1. Entra DSとVMの準備
+## 1. 自己管理AD DSとVMの準備【未更新・書き換え要】
+
+> [!NOTE]
+> 以下はEntra DS前提の旧手順です。[ADR-0005](decisions/0005-adfs-directory-platform.md)のOption A採択を受け、次の内容へ書き換える必要があります（未実施）: (a) Entra Domain Servicesの代わりに自己管理AD DSフォレスト用VMを新規作成し`Install-ADDSForest`相当の処理でフォレストを昇格する、(b) 15分のNTLM/Kerberosハッシュ同期待ちを撤去する（AD DSでは`New-ADUser`作成時点で即利用可能）、(c) VNetのDNSを新設AD DS VMのプライベートIPへ向ける、(d) ADFS VMのドメイン参加先を新設AD DSへ変更する。実装は委譲先セッションで行う（[development-handoff.md](development-handoff.md)参照）。
 
 1. Terraformの対象resourceと変更内容をレビューする。
 2. 承認後にEntra DS、ネットワーク、ADFS VM、ドメイン参加を構築する。
@@ -21,7 +25,7 @@
 3. Entra DSの健全性、DNS、時刻、ユーザー同期、VMドメイン参加を確認する。伝播待ちや再起動を成功扱いで飛ばさない。
 4. 必要なVM IP/FQDN、ドメイン名は既存Terraform outputsから取得する。資格情報は安全な保管先へ渡し、端末ログやPRへ出力しない。
 
-VM作成・ドメイン参加までと、ADFSサービス設定の完了を別に記録します。Entra DSの構築時間・継続費用を見込んで作業枠を確保します。
+VM作成・ドメイン参加までと、ADFSサービス設定の完了を別に記録します。AD DSフォレストの構築時間・継続費用を見込んで作業枠を確保します。
 
 ## 2. ADFSサービス、証明書、名前解決
 
