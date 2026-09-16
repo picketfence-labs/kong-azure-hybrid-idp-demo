@@ -31,3 +31,6 @@ out/
 
 # Playwright MCPによる手動E2E検証時の副産物（スナップショット・コンソールログ）
 .playwright-mcp/
+
+# ADFSデモ用の自己署名ルート証明書（VM再構築のたびに再生成される、秘密鍵は含まない）
+certs/
