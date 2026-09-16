@@ -2,14 +2,18 @@
 
 次の開発担当は、既存実装を土台にして追加要件へ移行します。Group 2は仕掛かり中であり、ゼロから作り直すプロジェクトではありません。**図版と追加要件は承認済みです。G1/G2は試験構成と静的検証まで完了し、実GatewayとIdPを使うPoCが残っています。** Azure/DBの実装再開完了を意味しません。
 
+> [!info] 2026-09-16のハンドオフ要約
+> Group 2のディレクトリ基盤はEntra Domain Services→**自己管理AD DS（[ADR-0005](decisions/0005-adfs-directory-platform.md)、Option A決定）**に切り替わりました。旧Azure環境は`terraform destroy`済みで、自己管理AD DS一式は未構築です。実装再開時は本ページの「ADR-0005決定後の基盤方針」節と「自己管理AD DS移行で新たに必要な実装作業」を最初に読んでください。図版（[図版素材](assets/hybrid-idp/README.md)）も改訂4で同じ決定を反映済みです。
+
 ## 正本と依存PR
 
 1. [Design Brief](design-brief.md): 現行実装との差分、Route/認可/観測の契約案。
 2. [ADR-0002](decisions/0002-hybrid-idp-requirements.md): 利用者が決定した要件。
 3. [ADR-0003](decisions/0003-ui-session-master-observation.md): 提案とPoC gate。合格後に採否を確定。
-4. [TESTING](../TESTING.md)、[ADFS runbook](adfs-setup-runbook.md)、[図版素材](assets/hybrid-idp/README.md)。
+4. [ADR-0005](decisions/0005-adfs-directory-platform.md): AD FSのディレクトリ基盤（自己管理AD DS、Option A決定）。
+5. [TESTING](../TESTING.md)、[ADFS runbook](adfs-setup-runbook.md)、[図版素材](assets/hybrid-idp/README.md)。
 
-中断ログPR #8、図版PR #9、設計PR #10、事前監査PR #11、P0選定PR #12はmainへmerge済みです。P1はPR #12の選定結果を土台にしています。
+中断ログPR #8、図版PR #9、設計PR #10、事前監査PR #11、P0選定PR #12はmainへmerge済みです。P1はPR #12の選定結果を土台にしています。ディレクトリ基盤の実機記録PR #21、ADR-0005決定PR #22、図版改訂4 PR #23もmainへmerge済みです。次の開発担当はこれらを前提に、自己管理AD DSフォレストの実装から再開してください。
 
 ## ADR-0005決定後の基盤方針（2026-09-16更新）
 
