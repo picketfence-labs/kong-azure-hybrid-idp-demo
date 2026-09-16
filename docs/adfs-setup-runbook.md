@@ -153,13 +153,14 @@ Terraform（`terraform/adfs_domain_controller.tf`）が次の順序で自動構�
     ```
 
 12. 管理端末とKongコンテナのtrust storeへ公開証明書を登録する。デモ終了時に削除できるよう、thumbprintと登録先だけを記録する。
-    - **管理端末（macOS）**: ログインキーチェーンではなくSystemキーチェーンへ、この証明書だけを個別に信頼させる（システム全体のデフォルト信頼設定は変更しない）。
+    - **管理端末（macOS、Firefoxの証明書ストア）**: macOSのSystemキーチェーンではなく、**Firefox自身が持つ独立した証明書ストア**へ登録する。MDM管理端末では`security add-trusted-cert`によるSystemキーチェーンへの信頼設定がポリシーで実質的に無効化されている場合があり（コマンドが`exit 0`で終わっても`security dump-trust-settings -d`に反映されない事象を実機で確認済み。[troubleshooting-log](troubleshooting-log.md)参照）、Firefoxの証明書ストアはOSのポリシーに依存しないため確実に機能する。ADFSへの手動確認は必ずFirefoxから行う（Safari/ChromeはOSのSystemキーチェーンに依存するため、この方式では警告が消えない）。
 
-      ```bash
-      sudo security add-trusted-cert -d -r trustAsRoot -k /Library/Keychains/System.keychain certs/adfs-demo-root.pem
-      ```
+      1. Firefoxで`about:preferences#privacy`を開く
+      2. 「証明書」→「証明書を表示」→「認証局証明書」タブ→「インポート」
+      3. `certs/adfs-demo-root.pem`を選択する
+      4. 表示されるダイアログで「この認証局によってウェブサイトが識別されることを信頼する」にチェックし、OK
 
-      削除する場合は`sudo security delete-certificate -c "adfs.adfsdemo.picketfencelabs.local" /Library/Keychains/System.keychain`（上記のCNと一致することを確認してから実行する）。
+      削除する場合は同じダイアログから対象の証明書を選択し「削除または信頼しない」を実行する（Subject `CN=adfs.adfsdemo.picketfencelabs.local`と一致することを確認してから実行する）。
     - **Kongコンテナ**: `docker-compose.yml`の`kong`サービスが`certs/adfs-demo-root.pem`を`/etc/kong/adfs-demo-root.pem`としてマウントし、`KONG_LUA_SSL_TRUSTED_CERTIFICATE=system,/etc/kong/adfs-demo-root.pem`で追加信頼する設定を既に含む（`tls_verify=false`は使わない、ADR-0004）。手順11でファイルを配置すれば、`docker compose up`時に自動的に読み込まれる。証明書を入れ替えた場合は`docker compose up -d kong`でコンテナを再作成する（マウントはファイル単位のため`restart`では再読込されない場合がある）。
 
 13. `adfs.adfsdemo.picketfencelabs.local`を、管理端末とKongコンテナの両方からADFS VMのPublic IPへ解決させる。ADFSは自己署名証明書のFQDN固定のみでパブリックDNSに登録しないため（ADR-0004）、双方とも固定エントリで解決させる。
@@ -233,6 +234,8 @@ ADFSファームとApplication Groupの静的状態はVM上で確認します。
 同期やclaim発行に失敗したらgateをblockedにし、別属性へ変える案をADRでレビューします。ADFSで`D-IT → it`へ変換してDB照会の要件を消さないでください。
 
 ## 5. Kongとブラウザの疎通
+
+管理端末では自己署名証明書をFirefoxの証明書ストアへ登録している（Section 2手順12）。Safari/ChromeはmacOSのSystemキーチェーンに依存し、MDM管理端末ではその信頼設定がポリシーで無効化される場合があるため（[troubleshooting-log](troubleshooting-log.md)参照）、以降のブラウザ試験は**Firefoxで行う**。
 
 - [ ] NSG許可元からブラウザとKongがdiscovery/JWKS/token endpointへ到達し、TLSを検証できる。
 - [ ] NSG許可外からADFSへ到達しない。RDPなど管理経路と公開OIDCを別に点検する。
