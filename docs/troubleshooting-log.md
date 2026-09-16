@@ -253,5 +253,6 @@
 - **実測**: Azure VMの読み取り確認では、`adfssrv`は`Stopped`、`Manual`だった。`Get-AdfsProperties`と`Get-AdfsFarmInformation`は`net.tcp://localhost:1500/policy`への接続を拒否され、`FarmConfigured=False`だった。既存ファームではなく、ロールだけが導入された状態と確認した。
 - **追加確認**: 構成完了レジストリ値だけを読むAzure Run Commandは完了したが、実行クライアントへ標準出力が返らなかった。値を推測せず、この追加確認は判定根拠に含めていない。
 - **再実行時の互換性エラー**: 修正版をWindows PowerShell 5.1で実行すると、存在しない`InitialConfigurationCompleted`を`Get-ItemPropertyValue`で直接取得した箇所が`PSArgumentException`で停止した。`-ErrorAction SilentlyContinue`ではこの例外を抑止できなかった。レジストリキー全体を取得し、値の存在を`PSObject.Properties`で確認してから読む方式へ変更した。値の欠落はロール導入済み、ファーム未構成の正常な状態として扱う。
+- **OU存在確認のエラー**: 次の再実行では、未作成の`OU=Kong Demo Service Accounts`を`Get-ADOrganizationalUnit -Identity`で取得した箇所が`ADIdentityNotFoundException`で停止した。Active Directory cmdletの`Identity`指定は対象が存在しない場合に例外を返すため、初回作成前の存在確認には使えない。同じ問題が起きる未作成gMSAの確認も含め、`Filter`、`SearchBase`、`SearchScope`を使う検索へ変更した。0件を初回作成、1件を再利用、複数件を異常として扱う。
 - **対処・回避方法**: サービス削除や`OverwriteConfiguration`は使わない。構成完了フラグと`Get-AdfsProperties`で既存ファームを検出し、`Stopped`、`Manual`のロール導入済み状態だけ再開を許可する。その他の判定不能なサービス状態は停止する。適用前にWindows PowerShell 5.1、管理者昇格、ドメインユーザーUPNも検証する。
 - **Runbook修正**: `C:\KongDemo\adfs`はTerraformで作成されないことを明記し、レビュー済みcommitからの取得コマンドを追加した。Windowsへのサインインをローカル管理者からドメイン管理者へ切り替える手順と、`whoami.exe /upn`による確認も追加した。

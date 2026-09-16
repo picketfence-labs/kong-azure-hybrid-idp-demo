@@ -105,7 +105,7 @@ VM作成・ドメイン参加までと、ADFSサービス設定の完了を別�
    .\Configure-AdfsDemoFarm.ps1 -Apply
    ```
 
-   AD FSロールのインストール直後は、ファーム未構成でも`adfssrv`サービスが`Stopped`、`Manual`で存在する。レジストリ値`InitialConfigurationCompleted`が存在しないことも正常である。サービスやレジストリを手動で変更しない。処理がロール導入後に中断した場合は、同じドメイン管理者セッションから修正版スクリプトを再実行する。`The AD FS role is installed, but no configured farm was detected. Continuing.`と表示され、残りの構成へ進む。
+   AD FSロールのインストール直後は、ファーム未構成でも`adfssrv`サービスが`Stopped`、`Manual`で存在する。レジストリ値`InitialConfigurationCompleted`、サービスアカウント用OU、gMSAが存在しないことも初回実行では正常である。サービス、レジストリ、ADオブジェクトを手動で変更しない。処理が中断した場合は、同じドメイン管理者セッションから修正版スクリプトを再実行する。`The AD FS role is installed, but no configured farm was detected. Continuing.`と表示され、残りの構成へ進む。
 
    スクリプトは`OverwriteConfiguration`を使いません。構成済みファーム、判定できないAD FSサービス状態、別IPの同名DNSレコード、別所有者のSPNを検出した場合は停止します。
 
