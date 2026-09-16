@@ -290,3 +290,22 @@
 - **実際どうだったか**: `git push -u origin <branch>`は成功し、`git log origin/main..HEAD`でも新規commitがリモート追跡ブランチ上に存在することを確認できたにもかかわらず、`gh pr create`は`Head sha can't be blank, ... No commits between main and <branch>`で失敗した。`gh repo view --json nameWithOwner`で確認すると、gh CLIが解決していたリポジトリは`picketfence-labs/kong-azure-obo-demo`（本リポジトリのfork元、`git remote`の`upstream`）で、`origin`ではなかった。
 - **原因**: このリポジトリは`kong-azure-obo-demo`のフォークで、`upstream`remoteが設定されている。`gh`はデフォルトのリポジトリ解決で、フォーク元（upstream）を優先することがある。
 - **対処・解決確認**: `gh pr create`に`--repo picketfence-labs/kong-azure-hybrid-idp-demo --head <branch> --base main`を明示指定したところ成功した（PR #25）。フォーク関係のあるリポジトリで`gh`コマンドを使う際は、対象リポジトリを毎回明示指定するか、事前に`gh repo view`でgh CLIの解決先を確認する。
+
+## 2026-09-16 自己管理AD DSフォレストの`terraform apply`実行で、CustomScriptExtension関連の実装不備が3件見つかった
+
+PR #25マージ後、利用者承認を得て`terraform apply -var-file=adfs.tfvars`を実行した。以下3件はいずれも実機実行で初めて判明し、コード修正→再applyで解決した（設計判断ではなく実装不備のため、既存ADRの改訂ではなく本ログにのみ記録する）。
+
+- **1件目: Windows VMはCustomScriptExtensionのhandlerを1台につき1つしか持てない**
+  - **何を期待していたか**: `create_forest`（フォレスト昇格）と`create_domain_objects`（ドメイン管理者/テストユーザー作成）を別々の`azurerm_virtual_machine_extension`（いずれも`Microsoft.Compute`/`CustomScriptExtension`）として、`time_sleep`を挟んで順に適用できること。
+  - **実際どうだったか**: `create_forest`（フォレスト昇格）は3分54秒で正常完了したが、続く`create_domain_objects`の作成が`400 Bad Request: Multiple VMExtensions per handler not supported for OS type 'Windows'`で失敗した。
+  - **対処・解決確認**: 2つの拡張機能を1つ（`bootstrap_dc`）へ統合し、スクリプト側で「既にドメインコントローラーなら直接実行、未昇格ならフォレスト昇格→再起動後に起動時スケジュールタスクで続行」という分岐で同じ目的を達成する設計へ変更した（`scripts/adfs/Install-AdDsForest.ps1`）。
+- **2件目: CustomScriptExtensionの`commandToExecute`に長いスクリプト全文を`-EncodedCommand`で埋め込むと"The command line is too long."で失敗する**
+  - **何を期待していたか**: 1件目の統合後、2つの`.ps1`ファイルの内容を1本のコマンド文字列へ結合し、`textencodebase64(..., "UTF-16LE")` + `-EncodedCommand`でそのまま実行できること。
+  - **実際どうだったか**: `azurerm_virtual_machine_extension.bootstrap_dc`の作成が`VMExtensionProvisioningError`（`Command execution finished, but failed... 'The command line is too long.'`）で失敗した。cmd.exe経由で渡される`commandToExecute`には実用上の長さ上限がある。
+  - **対処・解決確認**: スクリプト本体は非公開のBlob Storage（`azurerm_storage_account`/`_container`/`_blob`、SAS URL）へ配置し`fileUris`でVMへダウンロードさせ、`commandToExecute`は`-File`呼び出しの短い1行だけにする方式へ変更した。
+- **3件目: SASの`start`/`expiry`に`timestamp()`を使うと評価のたびに値が変わり、`protected_settings`に毎plan差分が出る**
+  - **何を期待していたか**: 2件目の対処後、`terraform plan`が収束し`No changes`になること。
+  - **実際どうだったか**: `data.azurerm_storage_account_sas`の`start`/`expiry`に`timestamp()`を直接使ったため、SAS文字列が評価のたびに変わり、`bootstrap_dc`の`protected_settings`が毎回差分として現れた。
+  - **対処・解決確認**: `time_static`リソースで作成時刻を1回だけ固定し、それを`start`/`expiry`の基準に使うよう変更した。以降`terraform plan`は`No changes`で安定した。
+
+**最終確認（実測）**: `az vm run-command invoke`で`vm-dc-demo`に読み取り専用コマンドを実行し、`DomainRole=5`（フォレスト昇格済み）、`adfs-domain-admin`と5テストユーザー（`demo-it`/`demo-sales`/`demo-new-business`/`demo-policy-admin`/`demo-claim`、いずれも`department`属性設定済み）の存在、`adfs-domain-admin`が`Domain Admins`メンバーであることを確認した。`vm-adfs-demo`でも同様に`PartOfDomain=True`、`Domain=adfsdemo.picketfencelabs.local`、FQDN`vm-adfs-demo.adfsdemo.picketfencelabs.local`を確認した。`Install-ADDSForest`は昇格対象サーバーのローカル管理者アカウント（`adfsvmadmin`）も`Domain Admins`へ引き継ぐ（Windows標準の仕様）ため、`adfs-domain-admin`と並んでこのアカウントも`Domain Admins`に含まれることを確認済み（想定外ではなく仕様通り）。
