@@ -42,3 +42,38 @@ services:
                 - it
                 - policy-admin
                 - claim
+
+      # insurance-uiのADFSセッションから直接呼べるデモ用Route（bearerトークン取得を要求せず、
+      # ブラウザのみで権限差を確認するためTESTING.md「Group 2」節向けに追加）。
+      # 認可判定・許可グループは上のbearer用Routeと同一で、認証方式だけがsessionに変わる。
+      - name: insurance-adfs-call-claim
+        protocols:
+          - http
+        paths:
+          - /adfs/call/claim
+        plugins:
+          - name: openid-connect
+            config:
+              issuer: "${{ env "DECK_ADFS_ISSUER" }}"
+              client_id:
+                - "${{ env "DECK_ADFS_CLIENT_ID" }}"
+              client_secret:
+                - "${{ env "DECK_ADFS_CLIENT_SECRET" }}"
+              auth_methods:
+                - session
+              session_secret: "${{ env "DECK_ADFS_SESSION_SECRET" }}"
+              session_audience: insurance-adfs
+              session_cookie_name: insurance_adfs_session
+              session_cookie_path: /adfs
+              session_cookie_same_site: Lax
+              session_cookie_http_only: true
+              upstream_headers:
+                - header: X-ADFS-Group-Claim
+                  path:
+                    - "${{ env "DECK_ADFS_GROUP_CLAIM_NAME" }}"
+          - name: legacy-authz-adapter
+            config:
+              allowed_groups:
+                - it
+                - policy-admin
+                - claim

@@ -17,6 +17,44 @@ const INITIAL_STATUS: Record<Identity, StatusState> = {
   adfs: "checking",
 };
 
+// ADFSセッションから直接呼べるデモ用API（TESTING.md「Group 2」節の権限差確認用）。
+// bearerトークンの別取得を要求せず、ログイン済みのブラウザセッションだけで200/403の違いを見せる。
+const DEMO_APIS = [
+  { key: "application", label: "Application API" },
+  { key: "claim", label: "Claim API" },
+] as const;
+
+type DemoApiKey = (typeof DEMO_APIS)[number]["key"];
+
+type ApiCallState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "allowed"; httpStatus: number }
+  | { status: "denied"; httpStatus: number }
+  | { status: "error"; httpStatus?: number };
+
+const INITIAL_API_RESULTS: Record<DemoApiKey, ApiCallState> = {
+  application: { status: "idle" },
+  claim: { status: "idle" },
+};
+
+function describeApiCall(state: ApiCallState) {
+  switch (state.status) {
+    case "idle":
+      return "未実行";
+    case "loading":
+      return "実行中";
+    case "allowed":
+      return `許可されました（HTTP ${state.httpStatus}）`;
+    case "denied":
+      return `権限がありません（HTTP ${state.httpStatus}）`;
+    case "error":
+      return state.httpStatus
+        ? `想定外のエラー（HTTP ${state.httpStatus}）`
+        : "想定外のエラー";
+  }
+}
+
 function describeStatus(status: StatusState) {
   if (status === "checking") {
     return "状態を確認中";
@@ -35,6 +73,45 @@ export default function Page() {
     useState<Record<Identity, StatusState>>(INITIAL_STATUS);
   const [popupBlocked, setPopupBlocked] = useState<Identity | null>(null);
   const popups = useRef<Partial<Record<Identity, Window>>>({});
+  const [apiResults, setApiResults] =
+    useState<Record<DemoApiKey, ApiCallState>>(INITIAL_API_RESULTS);
+
+  async function callDemoApi(key: DemoApiKey) {
+    setApiResults((current) => ({ ...current, [key]: { status: "loading" } }));
+    try {
+      const response = await fetch(`/adfs/call/${key}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+        redirect: "manual",
+      });
+
+      if (response.status === 200) {
+        setApiResults((current) => ({
+          ...current,
+          [key]: { status: "allowed", httpStatus: response.status },
+        }));
+        return;
+      }
+
+      if (response.status === 403) {
+        setApiResults((current) => ({
+          ...current,
+          [key]: { status: "denied", httpStatus: response.status },
+        }));
+        return;
+      }
+
+      setApiResults((current) => ({
+        ...current,
+        [key]: { status: "error", httpStatus: response.status },
+      }));
+    } catch {
+      setApiResults((current) => ({
+        ...current,
+        [key]: { status: "error" },
+      }));
+    }
+  }
 
   const refreshStatus = useCallback(async (identity: Identity) => {
     try {
@@ -197,6 +274,31 @@ export default function Page() {
                   </a>
                 </p>
               )}
+
+              {identity === "adfs" && authenticated && (
+                <div className="mt-4 space-y-2 border-t border-black/10 pt-4 dark:border-white/15">
+                  <p className="text-xs text-black/60 dark:text-white/60">
+                    ログイン中のユーザーの権限で、デモ用APIを呼び出します（ユーザーによって結果が変わります）。
+                  </p>
+                  {DEMO_APIS.map((api) => (
+                    <div
+                      key={api.key}
+                      className="flex flex-wrap items-center gap-2"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => callDemoApi(api.key)}
+                        className="rounded border border-black/20 px-3 py-2 text-sm dark:border-white/25"
+                      >
+                        {api.label}を呼ぶ
+                      </button>
+                      <span className="text-sm" aria-live="polite">
+                        {describeApiCall(apiResults[api.key])}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </article>
           );
         })}
@@ -205,8 +307,8 @@ export default function Page() {
       <section className="rounded-lg border border-dashed border-black/20 p-4 text-sm dark:border-white/25">
         <h2 className="font-semibold">このPoCに含めないもの</h2>
         <p className="mt-2 text-black/70 dark:text-white/70">
-          API認可、PostgreSQLマスタ、実行イベントと図の連動は後続gateで追加します。
-          この段階では認証状態と検証済み属性の有無だけを表示します。
+          上記のADFSデモAPIは、TESTING.md「Group 2」節の権限差確認だけを目的にした最小限の呼び出しです。
+          PostgreSQLマスタ、実行イベントと図の連動、全6 API・7 Route構成への対応は後続gateで追加します。
         </p>
       </section>
     </div>
