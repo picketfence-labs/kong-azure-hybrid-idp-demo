@@ -411,3 +411,10 @@ Section 2手順10（`.\Configure-AdfsDemoFarm.ps1 -Apply`）の初回実行か�
 - **実際どうだったか**: シナリオ①（`demo-no-agent-access`）は想定通り`AADSTS50105`で拒否された（回帰なし）。しかしシナリオ②の`demo-inquiry-only`はパスワードが受理された直後、Chat UIへは進まず**「アカウントをセキュリティ保護しましょう」という必須のMicrosoft Authenticator MFA登録画面**（`https://mysignins.microsoft.com/register?requirement=App`、QRコードでのアプリ登録を要求）が表示され、スキップ・後で設定する等の選択肢が見当たらなかった。物理デバイス（Authenticatorアプリ）が必要なため、Playwright（ブラウザ自動化）では完了できず、また新規MFA方式の登録はID/セキュリティ設定の変更に当たるため自己判断せず作業を停止した（`both_apis`も同一テナントポリシーの影響を受けるとみられ、シナリオ③は未実施）。
 - **原因の特定**: 不明。EntraIDテナントの「セキュリティの既定値群（Security Defaults）」または条件付きアクセスポリシーが、フォーク時点の検証（`docs/testing-images/01〜06`の実施時）以降に有効化・変更された可能性がある。本リポジトリでは元々「Group 1のGroup 2実装後の再検証は未実施」とTESTING.md冒頭に明記されており、この変更がいつ発生したかは特定できていない。今回のGroup 2（ADFS）側の作業とは無関係（Entra IDテナント側の設定であり、Kong/decK/Terraformのいずれの変更ログにも該当する変更はない）。
 - **対処・回避方法**: 未対処。利用者（Entra ID管理者）による対応が必要: (1) `demo-inquiry-only`/`demo-both-apis`について実機でMFA登録を一度完了させる、(2) これらのデモアカウントをセキュリティの既定値群・条件付きアクセスの対象外にする、のいずれか。原因の特定（いつ・どの設定変更で有効化されたか）も含め、Entra ID管理センターでの確認を利用者へ依頼した。
+
+## 2026-09-17 環境破棄（`terraform destroy`）時、`-var-file`未指定で対話プロンプトが発生
+
+- **何を期待していたか**: `terraform plan -destroy`を`terraform/`ディレクトリで実行すれば、これまでの`apply`同様そのまま破棄プランが出力されること。
+- **実際どうだったか**: `picketfence_azure_subscription_id`/`picketfence_azure_tenant_id`/`ad_ds_domain_name`/`nsg_allowed_source_cidr`の入力を対話的に要求され、非対話実行だったため`No value for required variable`エラーで失敗した。
+- **原因**: これら4変数は`adfs_variables.tf`でデフォルト値なし・機密性を理由に`terraform.tfvars`に含めず`adfs.tfvars`（`.gitignore`対象、リポジトリ未追跡）に分離管理されている設計のため。`terraform plan -destroy`は`-var-file`を省略するとリポジトリ標準の`terraform.tfvars`しか自動読み込みしない。
+- **対処・回避方法**: `terraform plan -destroy -var-file=adfs.tfvars -out=destroy.tfplan`で再実行し解決。以降`apply "destroy.tfplan"`まで想定通り完走（59リソース破棄、追加・変更0）。`destroy.tfplan`ファイルはsensitiveな出力値を含み得るため、適用完了後に削除した。
