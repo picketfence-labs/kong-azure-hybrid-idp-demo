@@ -5,6 +5,9 @@
 > [!note]
 > 2026-09-08: 本リポジトリはフォークだがPicketfence Labs内では新規Project扱いのため、`docs/decisions/`・`docs/troubleshooting-log.md`をリセットした（詳細はCLAUDE.md参照）。以下のGroup 1（Chat UI）のシナリオ・スクリーンショットはフォーク元での実機検証結果をそのまま引き継いでいる（機能に変更が無いため）が、本リポジトリでの実機再検証はまだ実施していない。Group 2の実装が一段落した段階で、Group 1・Group 2を通しで再検証する予定。
 
+> [!warning] 2026-09-17: 回帰テストを一部実施、Entra IDテナント側の変更でシナリオ②③がブロック中
+> シナリオ①（未割当ユーザーの`AADSTS50105`拒否）はGroup 2作業後も回帰なしを確認した（[13-entra-regression-scenario1-blocked.png](docs/testing-images/13-entra-regression-scenario1-blocked.png)）。一方シナリオ②③は、パスワード入力後にMicrosoft Authenticatorの必須MFA登録画面（[14-entra-regression-scenario2-mfa-enrollment-blocker.png](docs/testing-images/14-entra-regression-scenario2-mfa-enrollment-blocker.png)）で止まり、Chat UIへ到達できないため未実施。原因・対応は[troubleshooting-log](docs/troubleshooting-log.md)の2026-09-17エントリ参照。Entra ID管理者による対応（デモアカウントのMFA登録またはポリシー除外）待ち。
+
 ## Group 1: Chat UI（Entra ID OIDC/OBO）
 
 ### アクセス先
@@ -104,6 +107,64 @@
 - **ログアウト**: 画面右上の「ログアウト」ボタン → Entra IDのサインアウト画面へ遷移 → 再度トップページへ戻ると未ログイン状態に戻っていること
 - **顧客IDの推測不可**: Customer Details用の一覧・検索エンドポイントは存在しないため（[services/demo-api/src/server.ts](./services/demo-api/src/server.ts)参照）、Customer Inquiryを経由せずに顧客IDを得る手段が無いこと
 - **エージェントのAzure非依存**: `services/chat-ui/src/app/api/chat/route.ts`がAzure OpenAIのエンドポイント・APIバージョン・デプロイ名を一切保持せず、固定のモデル名`kong-demo-llm`のみでKongの`/llm`エンドポイントを呼び出していること
+
+---
+
+## Group 2: Insurance UI（ADFS、現行構成）
+
+> [!note] このセクションが対象とする構成
+> ここで確認するのは、`kong/insurance-*.yaml`に現在デプロイ済みの**旧ADFS専用構成**（`/product`・`/application`・`/simulation`・`/policy`・`/claim`・`/customer`の6つの無接頭辞Routeを、いずれもADFSのbearerトークン単体＋`legacy-authz-adapter`の`allowed_groups`で保護する構成）です。下の「共通保険API」節にあるEntra 4入口／ADFS 3入口・計7 Routeの新設計（P4）とは対象が異なります。この節の結果を下の受入計画のケースIDへ転記しないでください。
+
+### アクセス先
+
+| 用途 | URL |
+|---|---|
+| Insurance UI（ここからADFSでログインします） | http://localhost:8000/insurance |
+| Kong Admin API（decK同期状態の確認用、通常は使いません） | http://localhost:8001/ |
+
+### テストユーザー
+
+以下は自己管理AD DSフォレスト（`adfsdemo.picketfencelabs.local`）上の5デモユーザーです。パスワードはTerraform管理値（`terraform output -json insurance_test_user_credentials`）から取得してください。本文書・PR・コミットにパスワードを記載しないこと。手順は[docs/adfs-manual-test-script.local.md](docs/adfs-manual-test-script.local.md)（コミット対象外）を参照してください。
+
+| ユーザー | ログインID (UPN) | department属性 | 確定するグループ |
+|---|---|---|---|
+| ① IT | `demo-it@adfsdemo.picketfencelabs.local` | `D-IT` | `it` |
+| ② 営業 | `demo-sales@adfsdemo.picketfencelabs.local` | `D-SALES` | `sales` |
+| ③ 新規事業 | `demo-new-business@adfsdemo.picketfencelabs.local` | `D-NEW-BUSINESS` | `new-business` |
+| ④ 契約管理 | `demo-policy-admin@adfsdemo.picketfencelabs.local` | `D-POLICY-ADMIN` | `policy-admin` |
+| ⑤ 保険金請求 | `demo-claim@adfsdemo.picketfencelabs.local` | `D-CLAIM` | `claim` |
+
+### ユーザー×APIの権限一覧（期待値、`kong/insurance-*.yaml`の`allowed_groups`実値）
+
+| ユーザー\API | product | application | claim | policy | simulation | customer |
+|---|---|---|---|---|---|---|
+| it | ○ | ○ | ○ | ○ | ○ | ○ |
+| sales | ○ | ○ | ✕ | ○ | ○ | ○ |
+| new-business | ○ | ○ | ✕ | ○ | ○ | ○ |
+| policy-admin | ○ | ✕ | ○ | ○ | ✕ | ○ |
+| claim | ✕ | ✕ | ○ | ○ | ✕ | ○ |
+
+○=許可（200） ✕=拒否（403）。ブラウザから直接権限差を確認できるのは、insurance-uiに追加した2つのデモボタン（Application API・Claim API、いずれもADFSセッションをそのまま使い`legacy-authz-adapter`のbearer用Routeと同じ`allowed_groups`で判定する。他4 APIはUIから未配線）。
+
+### シナリオ: 複数ユーザー・複数APIでの権限差の確認（実施済み）
+
+上表からsales/policy-admin/it/new-businessの4ユーザーを選び、期待される結果が異なる6ケースをinsurance-uiのボタン操作のみで確認した（2026-09-17実施、`main` `aa3fcd5`+この変更、Playwright（Chromium）で実施）。
+
+| ユーザー | 呼んだAPI | 期待 | 実際の表示 | 証跡 | 結果 |
+|---|---|---|---|---|---|
+| sales | Application API | 許可(200) | 許可されました（HTTP 200） | ![sales/application allow](./docs/testing-images/07-adfs-sales-application-allow.png) | pass |
+| sales | Claim API | 拒否(403) | 権限がありません（HTTP 403） | ![sales/claim deny](./docs/testing-images/08-adfs-sales-claim-deny.png) | pass |
+| policy-admin | Application API | 拒否(403) | 権限がありません（HTTP 403） | ![policy-admin/application deny](./docs/testing-images/09-adfs-policy-admin-application-deny.png) | pass |
+| policy-admin | Claim API | 許可(200) | 許可されました（HTTP 200） | ![policy-admin/claim allow](./docs/testing-images/10-adfs-policy-admin-claim-allow.png) | pass |
+| it | Application API | 許可(200) | 許可されました（HTTP 200） | ![it/application allow](./docs/testing-images/11-adfs-it-application-allow.png) | pass |
+| new-business | Claim API | 拒否(403) | 権限がありません（HTTP 403） | ![new-business/claim deny](./docs/testing-images/12-adfs-new-business-claim-deny.png) | pass |
+
+6/6 pass。同じユーザーが同じ操作でAPIによって許可/拒否が変わること（sales・policy-adminは2ケースずつ）、ユーザーが違えば同じAPIでも結果が変わること（Application APIはsales/it許可・policy-admin拒否、Claim APIはpolicy-admin許可・sales/new-business拒否）の両方を確認できている。
+
+各ログインは`demo-claim`でのADFSログイン成功（前回セッション確認済み、「ADFS: signed in, 検証済み属性あり」表示）と合わせ、5ユーザー中4ユーザーのログイン成功実績も兼ねる。
+
+> [!note] 複数ユーザーを1ブラウザで切り替える場合の既知の注意点
+> アプリの「この経路だけログアウト」だけではADFS自身のSSOセッションが残り、次のユーザーでの「別画面でログイン」がサイレントに失敗して401になることがある（[docs/troubleshooting-log.md](docs/troubleshooting-log.md)の2026-09-17エントリ参照）。ユーザーを切り替える前に`https://adfs.adfsdemo.picketfencelabs.local/adfs/oauth2/logout`へアクセスしてADFS側のSSOセッションも明示的に破棄すること。
 
 ---
 
